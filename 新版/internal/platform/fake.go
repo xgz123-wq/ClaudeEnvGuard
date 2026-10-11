@@ -153,6 +153,22 @@ func (f *Fake) RunElevated(exe string, args []string) (int, error) {
 	return fn(exe, args)
 }
 
+// StartDetached 只记录调用。
+func (f *Fake) StartDetached(exe, rawArgs string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.RunLog = append(f.RunLog, "start "+exe+" "+rawArgs)
+	return nil
+}
+
+// OpenPath 只记录调用。
+func (f *Fake) OpenPath(path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.RunLog = append(f.RunLog, "open "+path)
+	return nil
+}
+
 func (f *Fake) IsAdmin() bool        { return f.Admin }
 func (f *Fake) UILanguage() string   { return f.UILang }
 func (f *Fake) BroadcastEnvChange()  {}

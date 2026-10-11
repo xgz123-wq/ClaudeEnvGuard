@@ -406,6 +406,13 @@ func HandleElevatedArgs(sys platform.OS, args []string) (code int, handled bool)
 	if len(args) != 2 {
 		return 0, false
 	}
+	if args[0] == "--elevated-apply" || args[0] == "--elevated-restore" {
+		// 只接受本工具备份目录下的请求：…\ClaudeEnvGuard\备份\<编号>
+		d := filepath.Clean(args[1])
+		if filepath.Base(filepath.Dir(d)) != "备份" || filepath.Base(filepath.Dir(filepath.Dir(d))) != "ClaudeEnvGuard" {
+			return 4, true
+		}
+	}
 	switch args[0] {
 	case "--elevated-apply":
 		return ElevatedApply(sys, args[1]), true

@@ -122,6 +122,10 @@ type OS interface {
 	Run(ctx context.Context, name string, args ...string) (output string, exitCode int, err error)
 	// RunElevated 以管理员身份运行程序（弹 UAC）并等待结束；用户取消返回 ErrElevationCancelled。
 	RunElevated(exe string, args []string) (exitCode int, err error)
+	// StartDetached 按原样命令行启动程序，不等待（用于按快捷方式参数打开专用浏览器）。
+	StartDetached(exe, rawArgs string) error
+	// OpenPath 用资源管理器打开目录或文件所在位置。
+	OpenPath(path string) error
 	IsAdmin() bool
 	UILanguage() string
 	BroadcastEnvChange()

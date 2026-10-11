@@ -568,7 +568,8 @@ func (e *ev) dnsVerdict(r model.Result, en model.Entry) model.Result {
 		return r
 	}
 	if e.pending {
-		r.Pending = true
+		// 参数已正确，但解析器探测还没回来：先显示「检测中」，不提前给绿灯
+		r.Pending, r.Status = true, model.Unknown
 		r.Detail += "正在探测代理那头用的 DNS…"
 		return r
 	}

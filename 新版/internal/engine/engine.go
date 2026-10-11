@@ -3,14 +3,19 @@ package engine
 
 import (
 	"context"
+	"errors"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"ClaudeEnvGuard/internal/appconfig"
 	"ClaudeEnvGuard/internal/checks"
+	"ClaudeEnvGuard/internal/chrome"
 	"ClaudeEnvGuard/internal/cleanup"
 	"ClaudeEnvGuard/internal/facts"
 	"ClaudeEnvGuard/internal/fixes"
+	"ClaudeEnvGuard/internal/logx"
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/platform"
 )
@@ -32,9 +37,14 @@ type Engine struct {
 	running bool
 }
 
-// New 创建引擎。
+// New 创建引擎，并初始化日志。who 用于区分日志来源（界面 / 命令行）。
 func New(sys platform.OS, version, selfExe string) *Engine {
 	return &Engine{Sys: sys, Net: facts.DefaultNet(), Version: version, SelfExe: selfExe}
+}
+
+// InitLog 打开日志（GUI 和命令行在启动时调用一次）。
+func InitLog(sys platform.OS, who string) {
+	logx.Init(appconfig.Dir(sys.Paths().LocalAppData), who)
 }
 
 // Settings 读设置；note 非空表示设置文件有问题已回退默认值。
@@ -103,6 +113,7 @@ func (e *Engine) Check(ctx context.Context, opt CheckOptions, progress func(mode
 	e.mu.Lock()
 	e.last, e.results, e.target = f, rep.Results, rep.Target
 	e.mu.Unlock()
+	logCheck(rep, f)
 	return rep, nil
 }
 
@@ -153,7 +164,34 @@ func (e *Engine) Plan(opt fixes.Options) model.FixPlan {
 // Apply 执行选中的修复。
 func (e *Engine) Apply(ids []string, opt fixes.Options) model.ApplyResult {
 	plan := e.Plan(opt)
-	return fixes.Apply(e.Sys, plan, ids, e.SelfExe)
+	logx.Printf("修复开始：%s", strings.Join(ids, ","))
+	res := fixes.Apply(e.Sys, plan, ids, e.SelfExe)
+	logOutcomes("修复", res)
+	return res
+}
+
+func logOutcomes(what string, res model.ApplyResult) {
+	for _, o := range res.Outcomes {
+		logx.Printf("%s %s：%s", what, map[bool]string{true: "成功", false: "失败"}[o.OK], o.Message)
+	}
+	logx.Printf("%s结束：%s", what, res.Message)
+}
+
+func logCheck(rep model.Report, f *facts.Facts) {
+	s := rep.Summary
+	logx.Printf("检查完成：%s；用时 %dms；通过 %d 警告 %d 失败 %d 未知 %d；离线=%v；浏览器=%s",
+		s.Headline, rep.DurationMs, s.Pass, s.Warn, s.Fail, s.Unknown, rep.Offline, rep.SelectedBrowser)
+	for _, ex := range rep.Exits {
+		logx.Printf("出口 %s:%d 监听=%v IP=%s 国家=%s 可达=%s %s", ex.Entry, ex.Port, ex.Listening, ex.IP, ex.CountryCode, ex.Reach, ex.Err)
+	}
+	for _, r := range rep.Results {
+		if r.Status == model.Fail || r.Status == model.Warn || r.Status == model.Unknown {
+			logx.Printf("  %s %s %s：%s", r.Status, r.ID, r.Title, r.Detail)
+		}
+	}
+	for name, msg := range f.Errors {
+		logx.Printf("收集器异常 %s：%s", name, msg)
+	}
 }
 
 // Backups 列出可还原的修复。
@@ -163,7 +201,10 @@ func (e *Engine) Backups() []model.BackupInfo {
 
 // Restore 还原某次修复。
 func (e *Engine) Restore(id string) model.ApplyResult {
-	return fixes.Restore(e.Sys, id, e.SelfExe)
+	logx.Printf("还原开始：%s", id)
+	res := fixes.Restore(e.Sys, id, e.SelfExe)
+	logOutcomes("还原", res)
+	return res
 }
 
 // localFacts 清理前需要最新的进程和浏览器状态；没检查过就现场读一次本地事实。
@@ -171,6 +212,53 @@ func (e *Engine) localFacts() *facts.Facts {
 	s, _ := e.Settings()
 	return facts.CollectLocal(context.Background(), e.Sys, s)
 }
+
+// LaunchBrowser 按专用浏览器快捷方式里的完整参数启动它；url 非空时替换首页。
+// 不直接拼 --user-data-dir 启动，避免漏掉代理、DNS、WebRTC 防护参数。
+func (e *Engine) LaunchBrowser(name, url string) error {
+	f := e.localFacts()
+	for _, b := range f.Browsers {
+		if b.Name != name {
+			continue
+		}
+		if len(b.Shortcuts) == 0 {
+			return errors.New("这个专用浏览器没有桌面快捷方式，先在检查结果里一键修复")
+		}
+		sc := b.Shortcuts[0]
+		args := sc.Args
+		if url != "" {
+			fl := chrome.Parse(sc.Args)
+			args = chrome.Build(sc.Args, chrome.Want{UserDataDir: b.UserDataDir, SocksPort: e.portFromArgs(fl, f), Lang: fl.Get(chrome.FlagLang),
+				AcceptLang: fl.Get(chrome.FlagAcceptLang)})
+			args = stripURLs(args) + " " + url
+		}
+		return e.Sys.StartDetached(sc.Target, args)
+	}
+	return errors.New("找不到专用浏览器「" + name + "」")
+}
+
+func (e *Engine) portFromArgs(fl chrome.Flags, f *facts.Facts) int {
+	v := fl.Get(chrome.FlagProxyServer)
+	if i := strings.LastIndex(v, ":"); i >= 0 {
+		if n, err := strconv.Atoi(v[i+1:]); err == nil {
+			return n
+		}
+	}
+	return f.Settings.PortBrowser
+}
+
+func stripURLs(args string) string {
+	var keep []string
+	for _, t := range chrome.Tokenize(args) {
+		if strings.HasPrefix(t, "-") {
+			keep = append(keep, t)
+		}
+	}
+	return strings.Join(keep, " ")
+}
+
+// OpenPath 在资源管理器里打开路径。
+func (e *Engine) OpenPath(p string) error { return e.Sys.OpenPath(p) }
 
 // CleanPlan 列出清理清单。
 func (e *Engine) CleanPlan(kind string) model.CleanPlan {
@@ -194,5 +282,7 @@ func (e *Engine) Clean(kind string, confirmed []string) model.CleanResult {
 		}
 		plan.Items = keep
 	}
-	return cleanup.Execute(e.Sys, plan, f)
+	res := cleanup.Execute(e.Sys, plan, f)
+	logx.Printf("清理 %s：%s 删除=%v 失败=%v", kind, res.Message, res.Removed, res.Errors)
+	return res
 }

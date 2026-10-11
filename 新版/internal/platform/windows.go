@@ -493,6 +493,27 @@ func (w *Windows) RunElevated(exe string, args []string) (int, error) {
 	return int(code), nil
 }
 
+func (w *Windows) StartDetached(exe, rawArgs string) error {
+	cmd := exec.Command(exe)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: syscall.EscapeArg(exe) + " " + rawArgs}
+	cmd.Dir = filepath.Dir(exe)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
+func (w *Windows) OpenPath(path string) error {
+	st, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if st.IsDir() {
+		return exec.Command(filepath.Join(os.Getenv("SystemRoot"), "explorer.exe"), path).Start()
+	}
+	return exec.Command(filepath.Join(os.Getenv("SystemRoot"), "explorer.exe"), "/select,", path).Start()
+}
+
 func (w *Windows) IsAdmin() bool {
 	return windows.GetCurrentProcessToken().IsElevated()
 }

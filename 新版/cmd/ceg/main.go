@@ -16,6 +16,7 @@ import (
 	"ClaudeEnvGuard/internal/cleanup"
 	"ClaudeEnvGuard/internal/engine"
 	"ClaudeEnvGuard/internal/fixes"
+	"ClaudeEnvGuard/internal/logx"
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/platform"
 	"ClaudeEnvGuard/internal/report"
@@ -46,6 +47,12 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	sys := platform.NewWindows()
+	if len(args) > 0 && strings.HasPrefix(args[0], "--elevated-") {
+		engine.InitLog(sys, "提权")
+	} else {
+		engine.InitLog(sys, "命令行")
+	}
+	logx.Printf("命令：%s", strings.Join(args, " "))
 	if code, ok := fixes.HandleElevatedArgs(sys, args); ok {
 		return code
 	}
