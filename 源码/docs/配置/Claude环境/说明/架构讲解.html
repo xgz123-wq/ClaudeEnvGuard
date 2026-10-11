@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude 环境配置指南 · 架构讲解</title>
+<style>
+  :root{
+    --bg:#faf8f5; --paper:#fffdfa;
+    --ink:#2b2622; --ink2:#5a5148; --ink3:#8b8177; --ink4:#b5aca2;
+    --line:rgba(43,38,34,.12); --line2:rgba(43,38,34,.06);
+    --rust:#a34e2a; --rust-soft:rgba(163,78,42,.08); --rust-line:rgba(163,78,42,.3);
+    --moss:#4a6b52; --moss-soft:rgba(74,107,82,.08);
+    --gold:#c9a227; --danger:#9c2f2f; --danger-soft:rgba(156,47,47,.06);
+    --mono:"Cascadia Code",Consolas,"SF Mono",ui-monospace,monospace;
+    --serif:Georgia,"Songti SC","Noto Serif SC",serif;
+    --sans:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;scroll-padding-top:20px}
+  body{font-family:var(--sans);background:var(--bg);color:var(--ink);line-height:1.75;
+       -webkit-font-smoothing:antialiased;overflow-x:hidden;overflow-wrap:break-word}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 clamp(16px,4vw,40px);
+        display:grid;grid-template-columns:220px 1fr;gap:clamp(20px,4vw,56px);align-items:start}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+
+  /* 目录 */
+  nav{position:sticky;top:24px;font-size:.83rem;padding:20px 0;max-height:calc(100vh - 48px);overflow-y:auto}
+  @media(max-width:900px){nav{position:static;max-height:none;border-bottom:1px solid var(--line);margin-bottom:8px}}
+  nav .navtitle{font-family:var(--mono);font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;
+                color:var(--rust);margin-bottom:14px}
+  nav a{display:block;color:var(--ink3);text-decoration:none;padding:5px 0 5px 12px;
+        border-left:2px solid transparent;transition:all .18s;line-height:1.45}
+  nav a:hover{color:var(--rust);border-left-color:var(--rust-line)}
+  nav a.on{color:var(--rust);border-left-color:var(--rust);font-weight:600}
+
+  main{padding:0 0 100px;min-width:0}
+  header.mast{padding:clamp(40px,7vw,76px) 0 clamp(20px,3vw,34px)}
+  .kicker{font-family:var(--mono);font-size:.68rem;letter-spacing:.24em;text-transform:uppercase;
+          color:var(--rust);margin-bottom:16px;display:flex;gap:10px;align-items:center}
+  .kicker::before{content:"";width:26px;height:1px;background:var(--rust)}
+  h1{font-family:var(--serif);font-size:clamp(1.85rem,4.4vw,2.9rem);font-weight:700;
+     letter-spacing:-.02em;line-height:1.16}
+  .lede{margin-top:16px;font-size:clamp(.96rem,1.5vw,1.06rem);color:var(--ink2);max-width:62ch}
+  .lede b{color:var(--ink);font-weight:640}
+
+  h2{font-family:var(--serif);font-size:clamp(1.3rem,2.7vw,1.72rem);font-weight:700;
+     letter-spacing:-.015em;margin:clamp(46px,6vw,72px) 0 6px;padding-top:10px;display:flex;
+     gap:12px;align-items:baseline}
+  h2 .n{font-family:var(--serif);font-size:.9rem;font-weight:600;color:var(--rust);
+        letter-spacing:.04em;flex-shrink:0;opacity:.9}
+  .rule{height:1px;background:var(--line);margin:10px 0 22px}
+  h3{font-size:1.04rem;font-weight:660;margin:30px 0 10px;padding-left:12px;
+     border-left:3px solid var(--rust);line-height:1.4}
+  h4{font-size:.94rem;font-weight:640;margin:20px 0 8px;color:var(--ink2)}
+  p{margin:12px 0;color:var(--ink2)}
+  p b,li b{color:var(--ink);font-weight:640}
+  .hl{background:linear-gradient(transparent 62%,rgba(201,162,39,.35) 62%);padding:0 1px}
+  ul,ol{margin:12px 0 12px 22px;color:var(--ink2)}
+  li{margin:6px 0}
+  code{font-family:var(--mono);font-size:.86em;background:rgba(43,38,34,.055);
+       padding:1px 5px;border-radius:4px;color:var(--ink);word-break:break-word}
+
+  /* 代码块 */
+  .code{position:relative;margin:14px 0;border:1px solid var(--line);border-radius:10px;
+        background:var(--paper);overflow:hidden}
+  .code .bar{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;
+             background:rgba(43,38,34,.03);border-bottom:1px solid var(--line2)}
+  .code .lbl{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;color:var(--ink3);text-transform:uppercase}
+  .code button{font-family:var(--sans);font-size:.72rem;padding:3px 11px;border:1px solid var(--line);
+               background:var(--paper);color:var(--ink2);border-radius:5px;cursor:pointer;transition:all .15s;flex-shrink:0}
+  .code button:hover{border-color:var(--rust-line);color:var(--rust)}
+  .code button.ok{background:var(--moss-soft);border-color:var(--moss);color:var(--moss)}
+  .code pre{margin:0;padding:13px 14px;overflow-x:auto;font-family:var(--mono);
+            font-size:.8rem;line-height:1.62;color:var(--ink)}
+  .code.tall pre{max-height:420px;overflow-y:auto}
+
+  /* 提示框 */
+  .box{margin:16px 0;padding:14px 17px;border-radius:9px;font-size:.9rem;line-height:1.68;border-left:3px solid}
+  .box .t{font-weight:680;display:block;margin-bottom:5px;font-size:.88rem}
+  .box p{margin:7px 0;font-size:.9rem}
+  .box.warn{background:var(--danger-soft);border-color:var(--danger)}
+  .box.warn .t{color:var(--danger)}
+  .box.tip{background:var(--moss-soft);border-color:var(--moss)}
+  .box.tip .t{color:var(--moss)}
+  .box.note{background:var(--rust-soft);border-color:var(--rust)}
+  .box.note .t{color:var(--rust)}
+
+  /* 双栏 */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+  @media(max-width:720px){.two{grid-template-columns:1fr}}
+  .col{border:1px solid var(--line2);border-radius:10px;padding:15px 17px;background:var(--paper)}
+  .col.must{border-left:3px solid var(--moss)}
+  .col.opt{border-left:3px solid var(--gold)}
+  .col .ch{font-family:var(--mono);font-size:.67rem;letter-spacing:.14em;text-transform:uppercase;
+           margin-bottom:9px;font-weight:700}
+  .col.must .ch{color:var(--moss)} .col.opt .ch{color:#8a6f16}
+  .col ul{margin:0 0 0 17px;font-size:.87rem}
+
+  /* 表格 */
+  .tw{overflow-x:auto;margin:16px 0;border:1px solid var(--line);border-radius:9px;background:var(--paper)}
+  table{border-collapse:collapse;width:100%;font-size:.86rem;min-width:420px}
+  th{background:rgba(43,38,34,.035);font-weight:660;text-align:left;padding:9px 13px;
+     border-bottom:1px solid var(--line);color:var(--ink);white-space:nowrap}
+  td{padding:9px 13px;border-bottom:1px solid var(--line2);color:var(--ink2);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td code,th code{font-size:.82em}
+  .yes{color:var(--moss);font-weight:700} .no{color:var(--danger);font-weight:700}
+
+  /* 步骤 */
+  .steps{counter-reset:s;list-style:none;margin:16px 0 16px 0;padding:0}
+  .steps li{counter-increment:s;position:relative;padding-left:36px;margin:13px 0;font-size:.92rem}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:23px;height:23px;
+    background:var(--rust-soft);border:1px solid var(--rust-line);color:var(--rust);border-radius:50%;
+    font-family:var(--mono);font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+
+  details{margin:14px 0;border:1px solid var(--line);border-radius:9px;background:var(--paper);overflow:hidden}
+  summary{padding:11px 15px;cursor:pointer;font-weight:620;font-size:.9rem;color:var(--ink2);user-select:none}
+  summary:hover{color:var(--rust)}
+  details[open] summary{border-bottom:1px solid var(--line2)}
+  .dbody{padding:13px 16px;font-size:.89rem}
+  .dbody p{font-size:.89rem;margin:9px 0}
+
+  footer{border-top:1px solid var(--line);margin-top:70px;padding:26px 0 0;color:var(--ink3);font-size:.8rem;line-height:1.7}
+  .anchor{scroll-margin-top:24px}
+
+  @media(prefers-reduced-motion:no-preference){
+    .rv{opacity:0;transform:translateY(12px);transition:opacity .45s ease,transform .45s ease}
+    .rv.in{opacity:1;transform:none}
+  }
+  /* 图解 */
+  .fig{margin:18px 0 22px;border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:16px 14px 12px}
+  .fig svg{width:100%;height:auto;display:block}
+  .fig figcaption{margin-top:8px;text-align:center;font-size:.8rem;color:var(--ink3);line-height:1.6}
+  .fig text{font-family:var(--sans);fill:var(--ink2);font-size:13px}
+  .fig .t-b{fill:var(--ink);font-weight:700;font-size:15px}
+  .fig .t-m{fill:var(--ink2);font-size:13.5px}
+  .fig .t-s{fill:var(--ink3);font-size:12px}
+  .fig .t-x{fill:var(--ink);font-size:12px}
+  .fig .t-mono{font-family:var(--mono);fill:var(--ink);font-size:14px}
+  .fig .t-rust{fill:var(--rust);font-weight:700;font-size:14px}
+  .fig .t-w{fill:#fffdfa;font-weight:700}
+  .fig .t-danger{fill:var(--danger);font-weight:700;font-size:11px}
+  .fig .b-app{fill:var(--paper);stroke:var(--ink3);stroke-width:1.2}
+  .fig .b-mute{fill:rgba(43,38,34,.04);stroke:var(--line);stroke-width:1}
+  .fig .b-port{fill:var(--paper);stroke:var(--line);stroke-width:1.2}
+  .fig .b-rule{fill:var(--rust-soft);stroke:var(--rust-line);stroke-width:1.2}
+  .fig .b-dash{fill:none;stroke:var(--rust-line);stroke-width:1.4;stroke-dasharray:6 4}
+  .fig .b-exit{fill:var(--rust)}
+  .fig .b-ok{fill:var(--moss-soft);stroke:var(--moss);stroke-width:1.2}
+  .fig .b-bad{fill:var(--danger-soft);stroke:var(--danger);stroke-width:1.2}
+  .fig .b-wall{fill:var(--danger);opacity:.85}
+  .fig .l-ink{stroke:var(--ink4);stroke-width:1.6}
+  .fig .l-rust{stroke:var(--rust);stroke-width:2.2}
+  .fig .f-ink3{fill:var(--ink4)} .fig .f-rust{fill:var(--rust)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <div class="navtitle">目录</div>
+  <a href="#s0">这套解决什么问题</a>
+  <a href="#s1">一条重要原则</a>
+  <a href="#s2">第一步 · 先测</a>
+  <a href="#s3">第二步 · Clash Verge</a>
+  <a href="#s4">第三步 · DNS 与 IPv6</a>
+  <a href="#s5">第四步 · Claude Code</a>
+  <a href="#s6">第五步 · 专用浏览器</a>
+  <a href="#s7">第六步 · Claude Desktop</a>
+  <a href="#s13">第七步 · 系统设置</a>
+  <a href="#s8">验收 · 桌面图标与五组灯</a>
+  <a href="#s9">出问题去哪改</a>
+  <a href="#s10">会让配置崩掉的坑</a>
+  <a href="#s11">日常习惯</a>
+  <a href="#s12">哪些说法靠不住</a>
+</nav>
+
+<main>
+<header class="mast">
+  <div class="kicker">Claude Code · Claude Desktop · Clash Verge · Windows</div>
+  <h1>把 Claude 的网络环境<br>配成一个正常人在上网</h1>
+  <p class="lede">Claude 有三种用法：命令行的 Claude Code、网页版、Claude Desktop。它们运行时不只访问 <code>claude.ai</code>，还会请求 CDN、登录认证等一串域名。<b>任何一个漏掉没走代理，就等于同一个账号的请求从两个国家发出</b>——这是风控最敏感的信号。这份指南讲清三条路怎么汇到同一个出口，以及每个口子怎么堵上。</p>
+  <p class="lede" style="font-size:.86rem;color:var(--ink3)">2026-09-23 版 · 按本套现行配置编写</p>
+</header>
+
+<div class="box note rv"><span class="t">这份是讲解，部署交给 AI</span>
+<p>看完这份，你脑子里应该有一张图：每条流量走哪、每个设置管什么、出问题该去哪改。<b>具体安装由 AI 按 <code>AGENTS.md</code> 一步步做</b>：把整个文件夹当项目打开（Claude Desktop 的 Code 标签页或 Codex），说「按 AGENTS.md 帮我部署」。</p></div>
+
+<h2 id="s0" class="anchor rv"><span class="n">壹</span>这套解决什么问题</h2><div class="rule rv"></div>
+
+<p class="rv">核心只有四条，其余都是为它们服务的：</p>
+
+<div class="tw rv"><table>
+<tr><th>目标</th><th>怎么实现</th></tr>
+<tr><td><b>Claude 只从一个固定出口出去</b></td><td>Clash 自建 <code>ACCOUNT-US</code> 组，Claude 规则排最前面；三个入口最后都汇到这个组</td></tr>
+<tr><td><b>没有请求能绕过代理</b></td><td>Clash TUN 接管全机；Windows 防火墙（WFP）规则禁止 Claude 程序直接连外网</td></tr>
+<tr><td><b>堵住 DNS、IPv6、WebRTC</b></td><td>Claude 域名走加密 DNS；IPv6 三层关闭；专用浏览器堵 WebRTC</td></tr>
+<tr><td><b>国内应用不受影响</b></td><td>只动 Claude 相关的规则和 DNS，普通流量仍按订阅规则分流</td></tr>
+</table></div>
+
+<h3 class="rv">一张图看懂：三个入口，一个出口</h3>
+
+<figure class="fig rv">
+<svg viewBox="0 0 900 470" role="img" aria-label="总架构图">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="f-ink3"/></marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="f-rust"/></marker>
+  </defs>
+  <rect x="10" y="30" width="170" height="64" rx="10" class="b-app"/>
+  <text x="95" y="58" text-anchor="middle" class="t-b">Claude Code</text>
+  <text x="95" y="80" text-anchor="middle" class="t-s">settings.json 的 env</text>
+  <rect x="10" y="150" width="170" height="64" rx="10" class="b-app"/>
+  <text x="95" y="178" text-anchor="middle" class="t-b">专用 Chrome</text>
+  <text x="95" y="200" text-anchor="middle" class="t-s">快捷方式启动参数</text>
+  <rect x="10" y="270" width="170" height="64" rx="10" class="b-app"/>
+  <text x="95" y="298" text-anchor="middle" class="t-b">Claude Desktop</text>
+  <text x="95" y="320" text-anchor="middle" class="t-s">HKLM 策略 egressProxyUrl</text>
+  <rect x="10" y="380" width="170" height="54" rx="10" class="b-mute"/>
+  <text x="95" y="404" text-anchor="middle" class="t-m">其他应用</text>
+  <text x="95" y="424" text-anchor="middle" class="t-s">不设代理</text>
+
+  <rect x="250" y="14" width="390" height="440" rx="14" class="b-dash"/>
+  <text x="445" y="36" text-anchor="middle" class="t-rust">Clash Verge（mihomo）</text>
+  <rect x="270" y="46" width="150" height="48" rx="8" class="b-port"/>
+  <text x="345" y="67" text-anchor="middle" class="t-mono">HTTP 43865</text>
+  <text x="345" y="85" text-anchor="middle" class="t-s">混合端口（设置页）</text>
+  <rect x="270" y="166" width="150" height="48" rx="8" class="b-port"/>
+  <text x="345" y="187" text-anchor="middle" class="t-mono">SOCKS 43866</text>
+  <text x="345" y="205" text-anchor="middle" class="t-s">脚本建的监听</text>
+  <rect x="270" y="286" width="150" height="48" rx="8" class="b-port"/>
+  <text x="345" y="307" text-anchor="middle" class="t-mono">HTTP 43867</text>
+  <text x="345" y="325" text-anchor="middle" class="t-s">脚本建的监听</text>
+  <rect x="270" y="386" width="150" height="48" rx="8" class="b-port"/>
+  <text x="345" y="407" text-anchor="middle" class="t-m">TUN 虚拟网卡</text>
+  <text x="345" y="425" text-anchor="middle" class="t-s">接管全机流量</text>
+
+  <rect x="455" y="110" width="170" height="120" rx="8" class="b-rule"/>
+  <text x="540" y="134" text-anchor="middle" class="t-b" style="font-size:14px">规则链（从上往下）</text>
+  <text x="468" y="158" class="t-x">① 从 43866 进来 → 专用组</text>
+  <text x="468" y="178" class="t-x">② Claude 域名 / IP 段</text>
+  <text x="486" y="196" class="t-x">→ 专用组（置顶）</text>
+  <text x="468" y="218" class="t-x">③ 订阅规则 … MATCH</text>
+  <rect x="455" y="290" width="170" height="44" rx="8" class="b-rule"/>
+  <text x="540" y="311" text-anchor="middle" class="t-x">43867 直接指定 proxy</text>
+  <text x="540" y="327" text-anchor="middle" class="t-x">不看规则，进专用组</text>
+
+  <rect x="690" y="150" width="190" height="80" rx="12" class="b-exit"/>
+  <text x="785" y="184" text-anchor="middle" class="t-w" style="font-size:17px">ACCOUNT-US</text>
+  <text x="785" y="208" text-anchor="middle" class="t-w" style="font-size:12px;font-weight:400">你手选的一个节点</text>
+  <rect x="690" y="40" width="190" height="60" rx="12" class="b-ok"/>
+  <text x="785" y="66" text-anchor="middle" class="t-b" style="font-size:14px">Anthropic</text>
+  <text x="785" y="86" text-anchor="middle" class="t-s">claude.ai / anthropic.com …</text>
+  <rect x="690" y="360" width="190" height="60" rx="12" class="b-mute"/>
+  <text x="785" y="386" text-anchor="middle" class="t-m">订阅自带的组 / 直连</text>
+  <text x="785" y="406" text-anchor="middle" class="t-s">普通流量、国内流量</text>
+
+  <line x1="180" y1="62" x2="266" y2="70" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="180" y1="182" x2="266" y2="190" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="180" y1="302" x2="266" y2="310" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="180" y1="407" x2="266" y2="410" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="420" y1="70" x2="452" y2="140" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="420" y1="190" x2="452" y2="170" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="420" y1="310" x2="452" y2="312" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="420" y1="410" x2="452" y2="222" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="625" y1="170" x2="686" y2="185" class="l-rust" marker-end="url(#arrR)"/>
+  <line x1="625" y1="312" x2="686" y2="215" class="l-rust" marker-end="url(#arrR)"/>
+  <line x1="625" y1="222" x2="686" y2="380" class="l-ink" marker-end="url(#arr)"/>
+  <line x1="785" y1="150" x2="785" y2="104" class="l-rust" marker-end="url(#arrR)"/>
+
+  <rect x="196" y="22" width="14" height="80" rx="4" class="b-wall"/>
+  <rect x="196" y="262" width="14" height="80" rx="4" class="b-wall"/>
+  <text x="203" y="120" text-anchor="middle" class="t-danger">WFP</text>
+  <text x="203" y="360" text-anchor="middle" class="t-danger">WFP</text>
+</svg>
+<figcaption>红色竖条是直连防护：Claude Code 和 Claude Desktop 的程序只允许连本机端口，绕过代理直连外网会被 Windows 防火墙挡下；专用 Chrome 靠启动参数和 TUN 兜底</figcaption>
+</figure>
+
+<div class="tw rv"><table>
+<tr><th>入口</th><th>在哪设置</th><th>端口</th><th>怎么进 ACCOUNT-US</th></tr>
+<tr><td><b>Claude Code</b></td><td><code>~/.claude/settings.json</code> 的 <code>env</code></td><td>HTTP <code>43865</code></td><td>按规则：Claude 域名规则置顶，命中后进组</td></tr>
+<tr><td><b>专用 Chrome</b></td><td>桌面快捷方式的启动参数</td><td>SOCKS <code>43866</code></td><td>入站规则 <code>IN-NAME</code>：从这个口进来的全部进组</td></tr>
+<tr><td><b>Claude Desktop</b></td><td>注册表 HKLM 策略 <code>egressProxyUrl</code></td><td>HTTP <code>43867</code></td><td>监听器直接写 <code>proxy: ACCOUNT-US</code>，不经过规则</td></tr>
+<tr><td>其他应用</td><td>不设置</td><td>TUN 接管</td><td>按订阅规则走；访问 Claude 域名也会命中置顶规则</td></tr>
+</table></div>
+
+<div class="box tip rv"><span class="t">为什么 Chrome 和 Desktop 整口进组，Code 却按规则？</span>
+<p>Chrome 和 Desktop 的专用口<b>只给 Claude 用</b>，整口进组最省心、也不会漏；Code 用的是 Clash 公共的混合端口，它还要访问 npm、GitHub 等别的站点，所以按域名分流。</p></div>
+
+<div class="box note rv"><span class="t">先确认一件事：Claude Code 连的是不是 Anthropic 官方</span>
+<p>如果 <code>settings.json</code> 里有 <code>ANTHROPIC_BASE_URL</code> 指向第三方网关，<b>Claude Code 的请求发去的是网关</b>，Claude 域名规则对它不生效，出口也不是你以为的那个。指向你自己本机的转发程序则另当别论，按那个程序自己的出口判断。</p></div>
+
+<h2 id="s1" class="anchor rv"><span class="n">贰</span>一条重要原则</h2><div class="rule rv"></div>
+
+<p class="rv">这份指南里的东西分两类。<b class="hl">搞混了会让你的配置静默失效</b>——看起来一切正常，实际根本没按规则走。</p>
+
+<div class="two rv">
+  <div class="col must"><div class="ch">本套约定 · 直接用</div>
+    <ul>
+      <li>三个端口 <code>43865</code> / <code>43866</code> / <code>43867</code></li>
+      <li>专用组名 <code>ACCOUNT-US</code></li>
+      <li>Claude 的域名清单（在全局脚本里）</li>
+      <li>Clash 的开关在哪一页</li>
+      <li>Chrome 启动参数</li>
+    </ul>
+  </div>
+  <div class="col opt"><div class="ch">因人而异 · 查你自己的</div>
+    <ul>
+      <li>订阅、选哪个节点</li>
+      <li>你的出口 IP</li>
+      <li>Claude Desktop / Code 的安装路径和程序指纹</li>
+      <li>账号别名、浏览器数据目录</li>
+    </ul>
+  </div>
+</div>
+
+<div class="box warn rv"><span class="t">最容易翻车的地方</span>
+<p>一条规则如果指向<b>一个你机器上不存在的代理组</b>，Clash <b>不会报错</b>，只会静默跳过，最后掉到兜底规则。表面一切正常，实际这条规则从没生效过。</p>
+<p>所以本套的全局脚本<b>自己建组</b>，不引用任何订阅自带的组名；三个端口也写死在全套脚本和检查里，<b>不建议改</b>。</p></div>
+
+<h2 id="s2" class="anchor rv"><span class="n">叁</span>第一步 · 先测，别急着配</h2><div class="rule rv"></div>
+
+<p class="rv">配之前先存一份基线，配完才知道哪里变好了。打开这四个页面各截一张图：</p>
+
+<ol class="steps rv">
+  <li><code>ip.net.coffee/claude</code> — 出口 IP、信任评分、是不是住宅 IP</li>
+  <li><code>ip.net.coffee/dns</code> — DNS 有没有泄漏到国内运营商</li>
+  <li><code>ip.net.coffee/webrtc</code> — 有没有暴露你的真实 IP</li>
+  <li><code>ip.net.coffee</code> 首页分流测试 — <code>claude.ai</code> 和 <code>anthropic.com</code> 是不是同一个出口</li>
+</ol>
+
+<div class="box tip rv"><span class="t">出口 IP 好不好，看三个字段</span>
+<p>页面上 <code>hosting</code>、<code>proxy</code>、<code>mobile</code> <b>三项都必须是 false</b>，而且这个 IP 归属的公司要是<b>真实的宽带运营商</b>，不是卖代理的公司。</p>
+<p>只看前三项不够——卖代理的 IP 也能显示 false，一定要再看归属公司。</p></div>
+
+<h2 id="s3" class="anchor rv"><span class="n">肆</span>第二步 · Clash Verge</h2><div class="rule rv"></div>
+
+<p class="rv">Clash 是整套的地基：三个入口都进它，规则、专用组、专用端口、Claude 的 DNS 都在这里。</p>
+
+<h3 class="rv">2.1 这几项只能在设置页改</h3>
+
+<div class="box note rv"><span class="t">写进配置文件是无效功</span>
+<p>Clash Verge 有个保护机制，下面这些键<b>只认设置页里的值</b>。你写进 Merge 或脚本里会被<b>覆盖回去</b>，配置里没有的键甚至会被删掉。</p>
+<p><code>mode</code> · <code>tun</code> · <code>mixed-port</code> · <code>allow-lan</code> · <code>log-level</code> · <code>ipv6</code> · <code>unified-delay</code> · <code>external-controller</code> · <code>secret</code></p></div>
+
+<ol class="steps rv">
+  <li>左侧「设置」→ 模式选 <b>规则</b></li>
+  <li>打开<b>虚拟网卡模式（TUN）</b></li>
+  <li>关闭<b>系统代理</b>（TUN 已经接管，两个都开容易互相打架）</li>
+  <li>关闭 <b>IPv6</b></li>
+  <li>打开 <b>DNS 覆写</b>，进去把里面的 <b>IPv6 也关掉</b></li>
+  <li>「端口设置」里的混合端口设为 <code>43865</code>，Claude Code 要用</li>
+</ol>
+
+<h3 class="rv">2.2 全局扩展脚本</h3>
+
+<p class="rv">这是整套配置的核心，文件在 <code>docs/配置/Claude环境/Clash/Clash全局账号通道.js</code>。<b>它不需要改任何地方</b>，端口和组名都是本套约定值。</p>
+
+<ol class="steps rv">
+  <li>Clash Verge → 左侧「订阅」</li>
+  <li>右上角<b>「全局扩展脚本」</b></li>
+  <li>把下面的内容<b>全部</b>粘贴进去，保存（AI 部署时由安装脚本写入，效果相同）</li>
+</ol>
+
+<div class="code tall rv"><div class="bar"><span class="lbl">Clash全局账号通道.js · 全局扩展脚本（讲解节选）</span><button onclick="cp(this)">复制</button></div><pre>function main(config, profileName) {
+  var groupName = "ACCOUNT-US";
+  var listenerName = "account-us-socks";
+  var inboundRule = "IN-NAME," + listenerName + "," + groupName;
+  var accountDnsServers = [
+    "https://1.1.1.1/dns-query#" + groupName,
+    "https://8.8.8.8/dns-query#" + groupName
+  ];
+  var accountDnsDomains = [
+    "+.anthropic.com",
+    "+.claude.ai",
+    "+.claude.com",
+    "+.claude.app",
+    "+.clau.de",
+    "+.claudemcpclient.com",
+    "+.claudemcpcontent.com",
+    "+.claudeusercontent.com"
+  ];
+  var legacyAccountDnsDomains = [
+    "+.sentry.io",
+    "+.statsigapi.net",
+    "+.datadoghq.com",
+    "+.intercom.io",
+    "+.intercomcdn.com"
+  ];
+  var claudeRuleMatchers = [
+    "DOMAIN-SUFFIX,anthropic.com",
+    "DOMAIN-SUFFIX,claude.ai",
+    "DOMAIN-SUFFIX,claude.com",
+    "DOMAIN-SUFFIX,claude.app",
+    "DOMAIN-SUFFIX,clau.de",
+    "DOMAIN-SUFFIX,claudemcpclient.com",
+    "DOMAIN-SUFFIX,claudemcpcontent.com",
+    "DOMAIN-SUFFIX,claudeusercontent.com",
+    "DOMAIN,servd-anthropic-website.b-cdn.net",
+    "DOMAIN,anthropic.com.cdn.cloudflare.net",
+    "DOMAIN,anthropic.auth0.com",
+    "DOMAIN,anthropic-com.ghost.io"
+  ];
+  var claudeRules = claudeRuleMatchers.map(function (matcher) {
+    return matcher + "," + groupName;
+  }).concat([
+    "IP-CIDR,160.79.104.0/21," + groupName + ",no-resolve",
+    "IP-CIDR6,2607:6bc0::/32," + groupName + ",no-resolve",
+    "IP-ASN,399358," + groupName + ",no-resolve"
+  ]);
+  var legacyMatchers = claudeRuleMatchers.concat([
+    "DOMAIN,claude.com",
+    "DOMAIN,clau.de",
+    "DOMAIN,claudemcpclient.com",
+    "DOMAIN,claudemcpcontent.com",
+    "DOMAIN,claudeusercontent.com",
+    "DOMAIN,sentry.io",
+    "DOMAIN,statsigapi.net",
+    "DOMAIN,cdn.anthropic.com",
+    "DOMAIN,mcp.anthropic.com",
+    "DOMAIN,console.anthropic.com",
+    "DOMAIN,workbench.anthropic.com"
+  ]).concat([
+    "DOMAIN-SUFFIX,sentry.io",
+    "DOMAIN-SUFFIX,statsigapi.net",
+    "DOMAIN,browser-intake-us5-datadoghq.com",
+    "DOMAIN-KEYWORD,datadog",
+    "DOMAIN-KEYWORD,sift",
+    "DOMAIN-SUFFIX,intercom.io",
+    "DOMAIN-SUFFIX,intercomcdn.com",
+    "DOMAIN,cdn.usefathom.com"
+  ]);
+
+  function isManagedClaudeRule(rule) {
+    if (typeof rule !== "string") {
+      return false;
+    }
+    if (rule === inboundRule) {
+      return true;
+    }
+    if (rule.indexOf("IP-CIDR,160.79.104.0/21,") === 0 ||
+        rule.indexOf("IP-CIDR6,2607:6bc0::/32,") === 0 ||
+        rule.indexOf("IP-ASN,399358,") === 0) {
+      return true;
+    }
+    return legacyMatchers.some(function (matcher) {
+      return rule.indexOf(matcher + ",") === 0;
+    });
+  }
+
+  if (!Array.isArray(config["proxy-groups"])) {
+    config["proxy-groups"] = [];
+  }
+  config["proxy-groups"] = config["proxy-groups"].filter(function (group) {
+    return !group || group.name !== groupName;
+  });
+  config["proxy-groups"].unshift({
+    name: groupName,
+    type: "select",
+    "include-all-proxies": true,
+    "exclude-type": "Direct|Reject"
+  });
+
+  // 只加固 Claude 链路：相关域名使用加密 DNS，且 DoH 连接明确经过 ACCOUNT-US。
+  // 普通/国内 DNS 保留订阅与 Clash 的通用解析器，不绑定任何专用代理组。
+  if (!config.dns || typeof config.dns !== "object") {
+    config.dns = {};
+  }
+  if (!config.dns["nameserver-policy"] ||
+      typeof config.dns["nameserver-policy"] !== "object" ||
+      Array.isArray(config.dns["nameserver-policy"])) {
+    config.dns["nameserver-policy"] = {};
+  }
+  legacyAccountDnsDomains.forEach(function (domain) {
+    delete config.dns["nameserver-policy"][domain];
+  });
+  accountDnsDomains.forEach(function (domain) {
+    config.dns["nameserver-policy"][domain] = accountDnsServers.slice();
+  });
+
+  // 2026-09-11 DNS 分层：不覆盖 nameserver、direct-nameserver 或 fallback。
+  // 这样飞书等普通应用的 DNS 不依赖 ACCOUNT-US；Claude 域名仍由上方 policy 加固。
+  config.dns.enable = true;
+
+  // Windows 多网卡 DNS 旁路防护：ETW 已确认 WLAN 与 TUN 并行代查。
+  config.tun = config.tun || {};
+  config.tun["strict-route"] = true;
+  config.tun["dns-hijack"] = ["any:53", "tcp://any:53"];
+
+  if (!Array.isArray(config.listeners)) {
+    config.listeners = [];
+  }
+  config.listeners = config.listeners.filter(function (listener) {
+    return !listener || listener.name !== listenerName;
+  });
+  config.listeners.unshift({
+    name: listenerName,
+    type: "socks",
+    listen: "127.0.0.1",
+    port: 43866,
+    udp: false
+  });
+
+  // Claude Desktop：HTTP 专用入口直接进入账号组，不改变其他应用的 DNS/分流。
+  config.listeners = config.listeners.filter(function (listener) {
+    return !listener || listener.name !== "claude-desktop-http";
+  });
+  config.listeners.unshift({
+    name: "claude-desktop-http",
+    type: "http",
+    listen: "127.0.0.1",
+    port: 43867,
+    proxy: groupName,
+    users: []
+  });
+
+  if (!Array.isArray(config.rules)) {
+    config.rules = [];
+  }
+  config.rules = config.rules.filter(function (rule) {
+    return !isManagedClaudeRule(rule);
+  });
+  config.rules = [inboundRule].concat(claudeRules, config.rules);
+
+  // 使用 Mihomo 官方生态 MetaCubeX 数据，每日更新；失败时继续保留本地旧文件。
+  config["geo-auto-update"] = true;
+  config["geo-update-interval"] = 24;
+  if (!config["geox-url"]) {
+    config["geox-url"] = {};
+  }
+  config["geox-url"].geoip = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat";
+  config["geox-url"].geosite = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat";
+  config["geox-url"].mmdb = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb";
+  config["geox-url"].asn = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb";
+
+  return config;
+}</pre></div>
+
+<div class="box warn rv"><span class="t">这是讲解用节选，别直接拿去用</span>
+<p>上面这段用来讲清逻辑，和仓库里真正的 <code>Clash/Clash全局账号通道.js</code> 并不逐字相同（节选里没有 DoH 端点强制直连、邮件端口规则清理、<code>geox-url</code> 国内镜像等几处）。<b>实际部署以文件或安装脚本写入的版本为准</b>，手工粘贴请打开 <code>Clash/Clash全局账号通道.js</code> 整份复制。</p></div>
+
+<div class="tw rv"><table>
+<tr><th>脚本做了什么</th><th>为什么</th></tr>
+<tr><td>新建 <code>ACCOUNT-US</code> 组（包含订阅全部节点，由你手选一个）</td><td>不依赖订阅的组名，换订阅后组还在，重选一次节点即可</td></tr>
+<tr><td>规则最前面插入：入站 <code>IN-NAME</code> + 12 条 Claude 域名 + 3 条 IP 兜底（<code>160.79.104.0/21</code>、<code>2607:6bc0::/32</code>、<code>AS399358</code>）</td><td>Claude 流量不会被订阅里的其他规则截走</td></tr>
+<tr><td>建两个监听：SOCKS <code>43866</code>（给 Chrome）、HTTP <code>43867</code>（给 Desktop，直接指向组）</td><td>浏览器和桌面版有专属入口，整口进组</td></tr>
+<tr><td>Claude 的 8 个域名后缀用 DoH（<code>1.1.1.1</code> / <code>8.8.8.8</code>）解析，DoH 连接本身也走专用组</td><td>Claude 域名的解析不经过国内运营商</td></tr>
+<tr><td>TUN 开 <code>strict-route</code>，<code>dns-hijack</code> 接管所有 53 端口</td><td>Windows 多网卡会并行查 DNS，不接管就有绕行</td></tr>
+<tr><td>清掉旧规则，包括以前让 sentry、statsig、datadog、intercom 等第三方监控也走专用组的写法</td><td>这些第三方服务别的软件也在用，塞进专用组会把出口用杂；现在交给订阅规则</td></tr>
+<tr><td>geo 数据库（含 ASN 库）改用 MetaCubeX 源，每天更新</td><td>IP-ASN 规则缺库会让整份配置加载失败</td></tr>
+</table></div>
+
+<h3 class="rv">2.3 为什么放在「全局扩展脚本」</h3>
+
+<figure class="fig rv">
+<svg viewBox="0 0 900 320" role="img" aria-label="Clash 配置合并顺序">
+  <defs><marker id="arrD" viewBox="0 0 10 10" refX="5" refY="9" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,0 L5,10 z" class="f-ink3"/></marker></defs>
+  <rect x="40" y="16" width="540" height="36" rx="8" class="b-mute"/>
+  <text x="60" y="39" class="t-m">① 订阅原始配置（机场下发，更新订阅会被覆盖）</text>
+  <rect x="40" y="60" width="540" height="36" rx="8" class="b-mute"/>
+  <text x="60" y="83" class="t-m">② 规则覆写的 prepend / append / delete</text>
+  <rect x="40" y="104" width="540" height="36" rx="8" class="b-port"/>
+  <text x="60" y="127" class="t-m">③ 设置页：模式、端口、IPv6、TUN 开关</text>
+  <rect x="40" y="148" width="540" height="36" rx="8" class="b-port"/>
+  <text x="60" y="171" class="t-m">④ DNS 覆写页</text>
+  <rect x="40" y="192" width="540" height="44" rx="8" class="b-rule" style="stroke-width:2"/>
+  <text x="60" y="219" class="t-b" style="font-size:14px">⑤ 全局 Merge → 全局扩展脚本 ← 本套放在这里</text>
+  <rect x="40" y="244" width="540" height="36" rx="8" class="b-mute"/>
+  <text x="60" y="267" class="t-m">⑥ 订阅级 Merge / Script（本套不用）</text>
+  <line x1="610" y1="24" x2="610" y2="274" class="l-ink" style="stroke-width:2" marker-end="url(#arrD)"/>
+  <text x="628" y="140" class="t-s" style="font-size:13px">越往下越晚执行，</text>
+  <text x="628" y="162" class="t-s" style="font-size:13px">能盖掉前面的结果</text>
+  <text x="40" y="306" class="t-s">注：③④ 的键以设置页为准，写进脚本会被改回去。</text>
+</svg>
+<figcaption>全局扩展脚本在订阅和设置页之后执行，所以它插到最前面的 Claude 规则一定排第一</figcaption>
+</figure>
+
+<p class="rv">而规则覆写的 <code>prepend</code> 在第 ② 层，会被后面的层覆盖。</p>
+
+<h3 class="rv">2.4 选节点 —— 这一步最关键</h3>
+
+<p class="rv">保存脚本后到<b>「代理」</b>页，会看到多了一个 <code>ACCOUNT-US</code> 组。</p>
+
+<div class="box warn rv"><span class="t">务必让 Claude 独占一个节点</span>
+<p>规则链的最后一条通常是 <code>MATCH</code> 兜底，它把<b>全机所有其他流量</b>都送给某个组。如果那个组和 <code>ACCOUNT-US</code> <b class="hl">选了同一个节点</b>，那么 YouTube、GitHub、Netflix 加上所有兜底流量，全都和 Claude 从同一个 IP 出去。</p>
+<p>这会把你精心挑的干净 IP 用脏。<b>给两个组选不同的节点。</b></p></div>
+
+<ol class="steps rv">
+  <li><code>ACCOUNT-US</code> 组 → 选一个你要长期用的节点，<b>之后不要乱换</b></li>
+  <li>订阅自带的主组（<code>MATCH</code> 指向的那个）→ <b>选另一个不同的节点</b></li>
+</ol>
+
+<h3 class="rv">2.5 改完必须重新加载并核验</h3>
+<p class="rv">本方案不依赖 mihomo 的 <code>9097</code> HTTP 控制端口；项目脚本可以通过 <code>\\.\pipe\verge-mihomo</code> 命名管道执行受控热重载。手动改配置后由用户在 Clash Verge 中应用或重载，再运行验证脚本读取运行态；模型默认不代用户重启或热重载 Clash。</p>
+
+<h3 class="rv">2.6 关于通用国外服务的规则</h3>
+<div class="box tip rv"><span class="t">一个简单的判断法</span>
+<p>很多人会加一堆 <code>DOMAIN-SUFFIX,openai.com,某组</code>。看这条规则的<b>目标组</b>，和最后那条 <code>MATCH</code> 兜底的<b>目标组</b>是不是同一个——是的话命中与否结果完全一样，纯属重复，还硬编码了订阅组名。</p>
+<p><b>只保留 Claude 那一套。</b>其他国外服务交给订阅原生分流 + MATCH 兜底就够了。</p></div>
+
+<h2 id="s4" class="anchor rv"><span class="n">伍</span>第三步 · DNS 与 IPv6</h2><div class="rule rv"></div>
+
+<p class="rv">代理只管「连接」，DNS 查询和 IPv6 是另外两条可能漏出去的路。原则：<b>只加固 Claude 相关的部分，普通 DNS 不动</b>，免得把飞书、企业内网这类国内应用搞断。</p>
+
+<figure class="fig rv">
+<svg viewBox="0 0 900 290" role="img" aria-label="DNS 分层">
+  <defs><marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="f-ink3"/></marker></defs>
+  <rect x="20" y="105" width="170" height="70" rx="10" class="b-mute"/>
+  <text x="105" y="135" text-anchor="middle" class="t-b" style="font-size:14px">任何程序发 DNS</text>
+  <text x="105" y="157" text-anchor="middle" class="t-s">53 端口 / 任意网卡</text>
+  <rect x="250" y="105" width="170" height="70" rx="10" class="b-rule"/>
+  <text x="335" y="135" text-anchor="middle" class="t-b" style="font-size:14px">TUN dns-hijack</text>
+  <text x="335" y="157" text-anchor="middle" class="t-s">全部交给 Clash 处理</text>
+  <rect x="490" y="25" width="390" height="90" rx="10" class="b-rule"/>
+  <text x="510" y="53" class="t-b" style="font-size:14px">Claude 域名（anthropic.com、claude.ai 等 7 个）</text>
+  <text x="510" y="77" class="t-m" style="font-size:13px">→ DoH 1.1.1.1 / 8.8.8.8，连接经过 ACCOUNT-US</text>
+  <text x="510" y="99" class="t-s">nameserver-policy，由全局脚本写入</text>
+  <rect x="490" y="165" width="390" height="90" rx="10" class="b-mute"/>
+  <text x="510" y="193" class="t-b" style="font-size:14px">其他域名</text>
+  <text x="510" y="217" class="t-m" style="font-size:13px">→ 订阅 / DNS 覆写里的通用解析器</text>
+  <text x="510" y="239" class="t-s">国内网站解析到国内地址是正常的，不算泄漏</text>
+  <line x1="190" y1="140" x2="246" y2="140" class="l-ink" marker-end="url(#arr3)"/>
+  <line x1="420" y1="130" x2="486" y2="80" class="l-ink" marker-end="url(#arr3)"/>
+  <line x1="420" y1="150" x2="486" y2="205" class="l-ink" marker-end="url(#arr3)"/>
+</svg>
+<figcaption>DNS 分层：只给 Claude 域名换加密解析器，普通 DNS 保持原样</figcaption>
+</figure>
+
+<h3 class="rv">IPv6 为什么要关三层</h3>
+
+<figure class="fig rv">
+<svg viewBox="0 0 900 190" role="img" aria-label="IPv6 三层">
+  <rect x="20" y="20" width="270" height="130" rx="10" class="b-app"/>
+  <text x="155" y="50" text-anchor="middle" class="t-b">① 网卡</text>
+  <text x="155" y="76" text-anchor="middle" class="t-m" style="font-size:13px">网卡属性里取消勾选</text>
+  <text x="155" y="96" text-anchor="middle" class="t-m" style="font-size:13px">「Internet 协议版本 6」</text>
+  <text x="155" y="126" text-anchor="middle" class="t-s">系统拿不到公网 IPv6 地址</text>
+  <rect x="315" y="20" width="270" height="130" rx="10" class="b-app"/>
+  <text x="450" y="50" text-anchor="middle" class="t-b">② Clash 全局</text>
+  <text x="450" y="76" text-anchor="middle" class="t-m" style="font-size:13px">设置页 IPv6 开关关闭</text>
+  <text x="450" y="96" text-anchor="middle" class="t-mono" style="font-size:13px">ipv6: false</text>
+  <text x="450" y="126" text-anchor="middle" class="t-s">内核不处理 IPv6 连接</text>
+  <rect x="610" y="20" width="270" height="130" rx="10" class="b-app"/>
+  <text x="745" y="50" text-anchor="middle" class="t-b">③ Clash DNS 覆写</text>
+  <text x="745" y="76" text-anchor="middle" class="t-m" style="font-size:13px">DNS 覆写页里的 IPv6 关闭</text>
+  <text x="745" y="96" text-anchor="middle" class="t-mono" style="font-size:13px">dns.ipv6: false</text>
+  <text x="745" y="126" text-anchor="middle" class="t-s">不返回 AAAA（IPv6）记录</text>
+  <text x="450" y="178" text-anchor="middle" class="t-s">只关一层的典型后果：DNS 给了 IPv6 地址，但没人代理 IPv6 连接，这部分流量就直连出去了</text>
+</svg>
+</figure>
+
+<ul class="rv">
+  <li><b>网卡那层</b>按网卡生效，换 Wi-Fi 不用重做；插了新网卡（USB 网卡等）要重新取消勾选。命令等价操作（管理员）：<code>Disable-NetAdapterBinding -Name 'WLAN' -ComponentID ms_tcpip6</code></li>
+  <li><b>虚拟网卡不用管</b>：Mihomo（TUN）、蓝牙、WSL 等虚拟网卡的 IPv6 勾由驱动管，取消了也会自己恢复；它们没有公网 IPv6 地址，形不成泄漏。验收看检测页有没有公网 IPv6</li>
+  <li><b>自动检查</b>：五项自检会检查物理网卡的 IPv6 绑定</li>
+</ul>
+
+<h2 id="s5" class="anchor rv"><span class="n">陆</span>第四步 · Claude Code 的代理</h2><div class="rule rv"></div>
+
+<p class="rv">位置 Windows 是 <code>C:\Users\你的用户名\.claude\settings.json</code>，Mac / Linux 是 <code>~/.claude/settings.json</code>。<b>只把下面的键合并进 <code>env</code> 里，不要整份覆盖原文件</b>——里面可能还有你别的配置。</p>
+
+<div class="code rv"><div class="bar"><span class="lbl">settings.json</span><button onclick="cp(this)">复制</button></div><pre>{
+  "env": {
+    "HTTP_PROXY": "http://127.0.0.1:43865",
+    "HTTPS_PROXY": "http://127.0.0.1:43865",
+    "ALL_PROXY": "http://127.0.0.1:43865",
+    "NO_PROXY": "localhost,127.0.0.1,*.local",
+    "DISABLE_AUTOUPDATER": "1"
+  }
+}</pre></div>
+
+<div class="tw rv"><table>
+<tr><th>为什么这么填</th><th></th></tr>
+<tr><td><b>三个 PROXY 都要填</b></td><td>Claude Code 不同请求读不同变量，只填一个会有请求漏出去不走代理</td></tr>
+<tr><td><code>HTTPS_PROXY</code> 也写 <code>http://</code></td><td>没写错。它表示"通过 HTTP 代理转发 HTTPS 请求"</td></tr>
+<tr><td><code>NO_PROXY</code> 的坑</td><td>底层是 Node，<b>只认主机名不认网段</b>。写成 <code>127.0.0.0/8</code> 永远不生效，必须写 <code>127.0.0.1</code></td></tr>
+<tr><td>关自动更新</td><td>更新中途断掉会把 <code>claude</code> 命令弄坏；而且程序文件一变，直连防护的指纹要重新登记，所以改成手动更新</td></tr>
+<tr><td>可选：<code>"BROWSER": "C:\\Users\\你的用户名\\noop-browser.bat"</code></td><td>指向一个只有 <code>@echo off</code> 的空脚本，<code>claude /login</code> 就不会自动拉起默认浏览器（普通 Chrome）；授权链接改为手动复制进专用 Chrome 打开。本套默认不配，想让登录只发生在专用浏览器里再加</td></tr>
+</table></div>
+
+<div class="box warn rv"><span class="t">不要把 SOCKS 端口填在这里</span>
+<p>Claude Code <b>不支持 SOCKS 代理</b>。给专用浏览器用的 <code>43866</code> 绝对不能填进 <code>settings.json</code>。</p></div>
+
+<div class="box warn rv"><span class="t">怎么验收（有个陷阱）</span>
+<p>运行 <code>/status</code> 看到 Proxy 有值，<b>只能证明代理变量被读到了</b>，不能证明流量真的走了你想要的出口。</p>
+<p>真正的验收看 Clash「连接」页里 <code>api.anthropic.com</code> 是否命中 <code>ACCOUNT-US</code>，见验收一节。</p></div>
+
+<h2 id="s6" class="anchor rv"><span class="n">柒</span>第五步 · 专用浏览器</h2><div class="rule rv"></div>
+
+<div class="box warn rv"><span class="t">不要用 Chrome 的「添加用户」按钮</span>
+<p>那个按钮只是在<b>同一个数据目录</b>下多开一个 Profile，cookie 仍然互通。同一个目录登过两个号，后台会直接把两个号认成同一个人。</p>
+<p>正确做法是用启动参数指定<b>完全独立的数据目录</b>。本套用 <code>创建账号浏览器.ps1 -Alias 别名</code> 自动生成快捷方式，每个账号一个。</p></div>
+
+<div class="code rv"><div class="bar"><span class="lbl">Chrome 启动参数（脚本生成的内容）</span><button onclick="cp(this)">复制</button></div><pre>--user-data-dir="%LOCALAPPDATA%\ClaudeBrowsers\账号别名\UserData" --proxy-server="socks5://127.0.0.1:43866" --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost" --lang=en-US --accept-lang="en-US,en" --force-webrtc-ip-handling-policy=disable_non_proxied_udp</pre></div>
+
+<div class="tw rv"><table>
+<tr><th>参数</th><th>作用</th></tr>
+<tr><td><code>--user-data-dir</code></td><td>给这个账号一个完全独立的数据目录。每个账号换一个别名，不能共用</td></tr>
+<tr><td><code>--proxy-server</code></td><td>整个浏览器走专用口 <code>43866</code>。用 <b>SOCKS5</b>，也别用 <code>--proxy-pac-url</code>，那会让一部分网址走本地 DNS</td></tr>
+<tr><td><code>--host-resolver-rules</code></td><td>浏览器自己完全不查 DNS，全部交给代理那头解析。副作用：顶部会提示「不受支持的命令行标记」，可忽略</td></tr>
+<tr><td><code>--lang</code> / <code>--accept-lang</code></td><td>浏览器界面和网页语言用英文（Mac 上 <code>--lang</code> 无效，只用 <code>--accept-lang</code>）</td></tr>
+<tr><td><code>--force-webrtc-ip-handling-policy</code></td><td>堵 WebRTC。它会绕过代理用 UDP 直接暴露真实 IP，<b>是最常见的漏 IP 口子</b></td></tr>
+</table></div>
+
+<h4 class="rv">怎么确认配对了</h4>
+<p class="rv">从这个快捷方式打开浏览器，地址栏输入 <code>chrome://version</code>，看「命令行」那行是不是同时包含独立目录和 <code>43866</code>。</p>
+<p class="rv">想看快捷方式里的完整参数：右键 → 属性 → 点进「目标」栏按 <code>Ctrl+A</code> 再复制。直接拖选常常只拷到可见部分，看起来像参数丢了。</p>
+
+<div class="box warn rv"><span class="t">入口纪律是防线的另一半</span>
+<p>这些参数只在桌面专用快捷方式里。从开始菜单、任务栏或普通 Chrome 图标打开的浏览器<b>一个参数都没有</b>，等于没防护。专用浏览器只从桌面快捷方式进。</p></div>
+
+<h2 id="s7" class="anchor rv"><span class="n">捌</span>第六步 · Claude Desktop</h2><div class="rule rv"></div>
+
+<p class="rv">Desktop 不读 <code>settings.json</code> 的代理，也没有启动参数可加。本套用它官方支持的企业策略指定代理，再用 Windows 防火墙兜底。</p>
+
+<div class="tw rv"><table>
+<tr><th>设置</th><th>作用</th><th>管理脚本</th></tr>
+<tr><td>HKLM 策略 <code>egressProxyUrl = http://127.0.0.1:43867</code></td><td>让 Desktop 的网络请求走专用口</td><td><code>Desktop防护/专用通道管理.ps1</code></td></tr>
+<tr><td>HKLM 策略 <code>disableAutoUpdates = 1</code></td><td>关自动更新；更新改走受控流程（先给新版加防护，再切换版本）</td><td><code>Desktop防护/Claude自动更新管理.ps1</code></td></tr>
+<tr><td>WFP 直连防护：4 个程序 × IPv4/IPv6 = 8 条规则</td><td>Desktop 主程序、CLI 的两个程序文件和 VS Code 插件内置程序只允许连本机回环地址；想绕过代理直连会被挡，但不阻断整个 <code>Code.exe</code></td><td><code>Desktop防护/应用直连防护管理.ps1</code></td></tr>
+<tr><td>Anthropic IPv4 网段直连阻断：<code>160.79.104.0/23</code></td><td>Windows 防火墙阻断所有程序直接连接该网段；本机代理入口不受影响。该网段不是 Claude 所有服务地址的完整清单</td><td><code>Anthropic网段直连阻断.ps1</code>；<a href="Anthropic网段直连阻断.md">使用说明</a></td></tr>
+</table></div>
+
+<div class="box warn rv"><span class="t">自动更新不要用 Enable 打开</span>
+<p><code>Claude自动更新管理.ps1 -Action Enable</code> 会连带删掉同一位置的代理策略，Desktop 就不走 <code>43867</code> 了。更新一律交给 AI 按 claude-maintenance 流程做。</p></div>
+
+<div class="box tip rv"><span class="t">为什么要登记程序指纹</span>
+<p>防护规则按程序路径匹配，指纹（SHA-256）用来确认这个路径下还是审核过的那个程序。<b>软件更新后指纹会变</b>，总检报「指纹 1/3」之类的 FAIL，启动器也会拒绝启动——这是保护，不是坏了。对 AI 说「我已手动更新，请同步」即可。</p></div>
+
+<h2 id="s13" class="anchor rv"><span class="n">玖</span>第七步 · 系统设置</h2><div class="rule rv"></div>
+
+<p class="rv">前面几步管的是「流量走哪」，这一步管操作系统自己会漏出去的信息，以及会把代理弄坏的东西。本套脚本只支持 Windows，Mac 一列只作对照参考。</p>
+
+<div class="tw rv"><table>
+<tr><th>项</th><th>Windows</th><th>Mac</th><th>为什么</th></tr>
+<tr><td><b>关 IPv6</b></td><td>见第三步（网卡 + Clash 两处，共三层）</td><td><code>networksetup -setv6off Wi-Fi</code></td><td>留着 IPv6 会有请求绕过代理直连</td></tr>
+<tr><td><b>关定位</b></td><td>设置 › 隐私和安全性 › 定位 → 关</td><td>系统设置 › 隐私与安全性 › 定位服务 → 关</td><td>定位直接给出真实坐标；网站要位置权限一律拒绝</td></tr>
+<tr><td><b>iCloud 专用代理</b></td><td>—</td><td>必须关</td><td>开着时一部分流量从苹果中转 IP 出去，多出一个来源</td></tr>
+<tr><td><b>杀毒白名单</b></td><td>Defender 里给 Clash Verge 加白名单：路径加安装目录和 <code>%APPDATA%\io.github.clash-verge-rev.clash-verge-rev</code>；进程加 <code>clash-verge.exe</code>、<code>verge-mihomo.exe</code>、<code>verge-mihomo-alpha.exe</code>、<code>clash-verge-service.exe</code></td><td>—</td><td>代理程序常被当成可疑软件悄悄删掉，本机端口一没，Claude 全部连不上。第三方杀软同理</td></tr>
+</table></div>
+
+
+<h2 id="s8" class="anchor rv"><span class="n">拾</span>验收 · 桌面图标与五组灯</h2><div class="rule rv"></div>
+
+<h3 class="rv">桌面图标</h3>
+
+<div class="two rv">
+  <div class="col must"><div class="ch">Claude-环境一键总检</div>
+    <ul><li>只读检查所有层：Clash、DNS、三入口一致、Desktop 代理和自动更新、直连防护、国内连通</li><li>每天开工前点一次；有 FAIL 就停下交给 AI</li></ul>
+  </div>
+  <div class="col must"><div class="ch">Claude-五项自检</div>
+    <ul><li>专查 Clash 通道和网卡 IPv6</li><li>结束后自动打开账号 1 专用 Chrome 的检测页，给你肉眼确认</li></ul>
+  </div>
+  <div class="col opt"><div class="ch">Claude-英文浏览器</div>
+    <ul><li>先检查防护和代理，全部通过才启动 Claude Desktop</li><li>检查不过会拒绝启动</li></ul>
+  </div>
+  <div class="col opt"><div class="ch">各账号专用 Chrome</div>
+    <ul><li>一个浏览器只登一个账号</li><li>检查结果不能互相代替，每个分别看</li></ul>
+  </div>
+</div>
+
+<div class="tw rv"><table>
+<tr><th>检查结果</th><th>接下来做什么</th></tr>
+<tr><td class="yes">PASS</td><td>看其余检查项</td></tr>
+<tr><td>WARN</td><td>看具体原因，防护相关的警告必须处理</td></tr>
+<tr><td class="no">FAIL</td><td>停止启动，交给 AI 排查</td></tr>
+<tr><td>MANUAL</td><td>到专用浏览器里做下面的肉眼验收</td></tr>
+</table></div>
+
+<h3 class="rv">检测站只看五组灯</h3>
+
+<div class="tw rv"><table>
+<tr><th>灯</th><th>通过标准</th><th>红灯（停止登录）</th></tr>
+<tr><td><b>Claude 出口</b></td><td>在你预期的支持地区，且长期稳定</td><td class="no">出现你的真实本地 IP，或国家突然变化</td></tr>
+<tr><td><b>IP 风险</b></td><td><code>hosting/proxy/mobile</code> 三项全 false，归属真实运营商</td><td class="no">机房 IP、高风险评分、有滥用记录</td></tr>
+<tr><td><b>DNS</b></td><td>未检测到泄漏</td><td class="no">出现本地运营商的 DNS</td></tr>
+<tr><td><b>WebRTC + IPv6</b></td><td>都未检测到泄漏</td><td class="no">暴露了本地公网 IP</td></tr>
+<tr><td><b>浏览器一致性</b></td><td>独立数据目录、SOCKS 端口正确</td><td class="no">进了普通 Chrome，或参数缺失，或账号间共用目录</td></tr>
+</table></div>
+
+<div class="box note rv"><span class="t">三个"出口"不是一回事</span>
+<p>检测页上的「中国出口」「Cloudflare 出口」「Claude 出口」是三个不同的探针，IP 不一样是正常的。只有 Claude 相关的出口跨了国家，或出现你的真实本地 IP，才是真红灯。</p>
+<p>WebRTC 项里如果只剩一个 <code>xxxx.local</code> 形式的随机主机名（mDNS），不含 IP，属于可接受残留。</p></div>
+
+<div class="box tip rv"><span class="t">最可靠的证据</span>
+<p>Clash Verge 的「连接」页搜 <code>anthropic</code>，看命中的是不是 <code>ACCOUNT-US</code>。<b>配置写对了不等于流量真的走对了。</b></p></div>
+
+<h2 id="s9" class="anchor rv"><span class="n">拾壹</span>出问题去哪改</h2><div class="rule rv"></div>
+
+<p class="rv">先看是哪个图标、哪一项报错，再对照找到所属层。原则：<b class="hl">先定位层，再改那一层</b>，不要一上来就换节点或重装。</p>
+
+<figure class="fig rv">
+<svg viewBox="0 0 900 250" role="img" aria-label="故障定位分层">
+  <rect x="20" y="16" width="860" height="40" rx="8" class="b-app"/>
+  <text x="40" y="41" class="t-b" style="font-size:14px">应用层</text><text x="140" y="41" class="t-m">settings.json / Chrome 启动参数 / HKLM 策略 —— 应用有没有把流量交给正确端口</text>
+  <rect x="20" y="64" width="860" height="40" rx="8" class="b-bad"/>
+  <text x="40" y="89" class="t-b" style="font-size:14px">防护层</text><text x="140" y="89" class="t-m">WFP 规则、程序指纹 —— 软件更新后最常见</text>
+  <rect x="20" y="112" width="860" height="40" rx="8" class="b-rule"/>
+  <text x="40" y="137" class="t-b" style="font-size:14px">Clash 层</text><text x="140" y="137" class="t-m">全局脚本、ACCOUNT-US 节点、设置页开关 —— 规则和端口是否生效</text>
+  <rect x="20" y="160" width="860" height="40" rx="8" class="b-ok"/>
+  <text x="40" y="185" class="t-b" style="font-size:14px">系统层</text><text x="140" y="185" class="t-m">网卡 IPv6、DNS、TUN 虚拟网卡 —— 有没有绕过 Clash 的路</text>
+  <rect x="20" y="208" width="860" height="36" rx="8" class="b-mute"/>
+  <text x="40" y="231" class="t-b" style="font-size:14px">出口层</text><text x="140" y="231" class="t-m">节点本身：IP 质量、所在地、是否稳定 —— 只有这层需要你换订阅或节点</text>
+</svg>
+</figure>
+
+<div class="tw rv"><table>
+<tr><th>症状</th><th>所属层</th><th>去哪看、怎么处理</th></tr>
+<tr><td>总检报直连防护「指纹 1/3」，启动器拒绝启动</td><td>防护层</td><td>刚更新过 Desktop 或 Code。对 AI 说「我已手动更新，请同步」</td></tr>
+<tr><td>Desktop 打不开网络 / 一直转圈</td><td>应用层 / Clash 层</td><td>总检「Claude Desktop 本地代理」：<code>43867</code> 是否在监听、HKLM 策略是否还在</td></tr>
+<tr><td>「Rule / TUN / Claude 规则」FAIL</td><td>Clash 层</td><td>被切成全局模式、TUN 关了，或全局脚本没生效；在设置页恢复并重启 Clash Verge 界面</td></tr>
+<tr><td>「ACCOUNT-US」FAIL</td><td>Clash 层 / 出口层</td><td>组里没选节点或节点不通；换订阅后要重新手选</td></tr>
+<tr><td>「DNS 防旁路」FAIL</td><td>系统层</td><td>TUN 的 <code>dns-hijack</code> / <code>strict-route</code> 被覆盖；检查全局脚本是否还在</td></tr>
+<tr><td>「国内连通」FAIL</td><td>Clash 层</td><td>普通 DNS 被改坏；或在 Desktop 会话里检测时被注入了 <code>43867</code> 代理（误报，去掉代理变量再测）</td></tr>
+<tr><td>检测站显示 IPv6 或 WebRTC 泄漏</td><td>系统层 / 应用层</td><td>IPv6 三层逐个查；WebRTC 查专用 Chrome 的 <code>chrome://version</code></td></tr>
+<tr><td>出口在意外国家、IP 被标为机房</td><td>出口层</td><td>节点问题，换节点后重跑五项自检和总检</td></tr>
+<tr><td>Claude Code 连不上，Desktop 正常</td><td>应用层</td><td><code>settings.json</code> 的端口是否 <code>43865</code>；<code>ANTHROPIC_BASE_URL</code> 指向哪里</td></tr>
+</table></div>
+
+<h2 id="s10" class="anchor rv"><span class="n">拾贰</span>会让配置直接崩掉的坑</h2><div class="rule rv"></div>
+
+<div class="tw rv"><table>
+<tr><th>坑</th><th>后果</th><th>怎么避</th></tr>
+<tr><td>用了 IP-ASN 规则但没有 ASN 数据库</td><td class="no">整份配置加载失败（不是规则失效，是全部规则都没了，直接断网）</td><td>全局脚本已配 <code>geox-url.asn</code> 并每日更新</td></tr>
+<tr><td>把 <code>client-fingerprint</code> 写成 <code>fingerprint</code></td><td class="no">节点直接连不上</td><td><code>fingerprint</code> 是服务端证书指纹；多数订阅已自带 <code>client-fingerprint</code>，先看再改</td></tr>
+<tr><td>只关了一层 IPv6</td><td class="no">IPv6 流量绕过代理直连</td><td>三层都关，五项自检会查</td></tr>
+<tr><td>规则指向不存在的代理组</td><td class="no">静默失效，看着正常实际没生效</td><td>脚本自建组，不引用订阅组名</td></tr>
+<tr><td>把全机 DNS 改成国外 DoH</td><td class="no">国内应用（飞书、企业内网）全部断网</td><td>只给 Claude 域名换解析器</td></tr>
+<tr><td>改完配置没应用或重载</td><td class="no">以为生效了其实没有</td><td>由用户在 Clash Verge 中应用或重载，再运行验证脚本读取运行态</td></tr>
+<tr><td>用 AI 旧文档或旧脚本覆盖现场 <code>Script.js</code></td><td class="no">新规则被旧版冲掉</td><td>先比对再改，以现场为准</td></tr>
+</table></div>
+
+<h2 id="s11" class="anchor rv"><span class="n">拾叁</span>日常习惯</h2><div class="rule rv"></div>
+
+<ul class="rv">
+<li>一个浏览器<b>只登一个</b> AI 账号</li>
+<li>注册 → 登录 → 付款 → 点验证邮件，<b>全程同一台电脑同一个浏览器</b></li>
+<li>国内支付（支付宝 / 微信）用<b>另一个走直连的普通浏览器</b>，也别把支付宝微信加进代理规则</li>
+<li>出口节点固定，不要乱切</li>
+<li>续费日之前确认卡能扣款——<b>扣款失败可能直接封号</b>，不只是暂停订阅</li>
+</ul>
+
+<div class="tw rv"><table>
+<tr><th>例行事</th><th>怎么做</th></tr>
+<tr><td><b>换订阅</b></td><td>导入新订阅 → 在 <code>ACCOUNT-US</code> 里手选节点 → 跑五项自检 + 一键总检。全局脚本不用动</td></tr>
+<tr><td><b>软件更新</b></td><td>对 AI 说「更新 Claude Desktop」「更新 Claude Code CLI」，或「我已手动更新，请同步」；AI 按 claude-maintenance 流程处理指纹和防护</td></tr>
+</table></div>
+
+<h2 id="s12" class="anchor rv"><span class="n">拾肆</span>哪些流行说法靠不住</h2><div class="rule rv"></div>
+
+<p class="rv">网上的配置教程互相矛盾的地方不少。这几条是核对过的：</p>
+
+<div class="tw rv"><table>
+<tr><th>流行说法</th><th>实际情况</th></tr>
+<tr><td>"要加 NTP 分流规则，因为 Claude 通过 NTP 判断你的时区"</td><td class="no"><b>站不住。</b>NTP 协议只传 UTC 时间戳，<b>协议里根本没有时区字段</b>；网页读的是系统时区</td></tr>
+<tr><td>"配置里加一行 <code>ipv6 = false</code> 就行"</td><td class="no">这个等号写法<b>不属于任何主流代理内核</b>。Clash 是 <code>ipv6: false</code>（冒号），而且要在设置页改</td></tr>
+<tr><td>"把 <code>network</code> 设成 <code>tcp</code> 来禁用 UDP"</td><td class="no">那是 Xray 的写法。在 Clash 里 <code>network</code> 是<b>节点传输层</b>（ws/grpc/h2），跟禁不禁 UDP 毫无关系</td></tr>
+<tr><td>"遥测、监控域名也要塞进 Claude 专用组"</td><td class="no">sentry、datadog 等是第三方服务，别的软件也在用，塞进去只会把出口用杂。本套已移除</td></tr>
+<tr><td>"家宽 IP 变了会触发风控"</td><td>两种说法都有。较可信的是：<b>家宽可以变，机房不能变</b>——IP 的行为模式要符合它的类型</td></tr>
+</table></div>
+
+<footer>
+  <p>本文基于本套现行脚本（<code>Clash全局账号通道.js</code>、<code>Claude环境一键总检.ps1</code>、<code>创建账号浏览器.ps1</code>、<code>Desktop防护/</code>）与公开的社区经验整理。第三方检测站的评分只是风险提示，不是 Anthropic 的官方认证，也不保证账号一定不受风控。</p>
+  <p style="margin-top:8px">本文只讲网络配置，目的是消除误路由和信息泄漏。不涉及也不建议任何伪造身份、绕过封禁或规避官方核验的做法。账号资格、付款方式和实际所在地必须符合 Anthropic 当前条款与支持地区。</p>
+</footer>
+</main>
+
+</div>
+
+<script>
+function cp(btn){
+  var t = btn.closest('.code').querySelector('pre').innerText;
+  var done = function(){
+    var o = btn.textContent;
+    btn.textContent = '已复制';
+    btn.classList.add('ok');
+    setTimeout(function(){ btn.textContent = o; btn.classList.remove('ok'); }, 1600);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(t).then(done).catch(function(){ fallback(t, done); });
+  } else { fallback(t, done); }
+}
+function fallback(text, done){
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch(e){}
+  document.body.removeChild(ta);
+}
+
+// 目录高亮
+var links = [].slice.call(document.querySelectorAll('nav a'));
+var secs = links.map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); }).filter(Boolean);
+function sync(){
+  var y = window.scrollY + 90, cur = 0;
+  secs.forEach(function(s, i){ if (s.offsetTop <= y) cur = i; });
+  links.forEach(function(a, i){ a.classList.toggle('on', i === cur); });
+}
+window.addEventListener('scroll', sync, {passive:true});
+sync();
+
+// 入场动画
+if (window.matchMedia && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if (e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, {threshold:.04});
+  document.querySelectorAll('.rv').forEach(function(el){ io.observe(el); });
+} else {
+  document.querySelectorAll('.rv').forEach(function(el){ el.classList.add('in'); });
+}
+</script>
+</body>
+</html>

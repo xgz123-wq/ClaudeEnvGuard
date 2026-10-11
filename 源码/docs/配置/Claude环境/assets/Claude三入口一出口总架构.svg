@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 580" width="1000" height="580" role="img" aria-label="Claude 环境总架构图：三个入口经 Clash 汇入 ACCOUNT-US 单一出口">
+  <title>Claude 环境总架构图</title>
+  <desc>Claude Code、专用 Chrome、Claude Desktop 各有专用端口，最终都汇入 Clash 的 ACCOUNT-US 组，再出到 Anthropic。WFP 直连防护拦下绕过代理的程序。</desc>
+  <defs>
+    <style>
+      .t   { font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; }
+      .ttl { font-size: 19px; font-weight: 700; fill: #1f2328; }
+      .zl  { font-size: 13px; font-weight: 700; fill: #59636e; }
+      .b   { font-size: 14px; font-weight: 600; fill: #1f2328; }
+      .s   { font-size: 11.5px; fill: #59636e; }
+      .x   { font-size: 12px; fill: #1f2328; }
+      .ln  { font-size: 13.5px; font-weight: 700; fill: #0969da; }
+      .cap { font-size: 13px; fill: #1f2328; }
+      .cp2 { font-size: 11.5px; fill: #59636e; }
+      .wl  { font-size: 11px; font-weight: 700; fill: #cf222e; }
+      .app   { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1.2; }
+      .port  { fill: #ffffff; stroke: #d1d9e0; stroke-width: 1.2; }
+      .rules { fill: #ddf4ff; stroke: #54aeff; stroke-width: 1.2; }
+      .exit  { fill: #fff1e5; stroke: #bc4c00; stroke-width: 1.6; }
+      .sink  { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.4; }
+      .mute  { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1.2; stroke-dasharray: 4 3; }
+      .zone  { fill: none; stroke: #d1d9e0; stroke-width: 1; stroke-dasharray: 6 4; }
+      .wall  { fill: #cf222e; opacity: 0.85; }
+      .flow  { stroke: #59636e; stroke-width: 1.6; fill: none; }
+      .flowr { stroke: #bc4c00; stroke-width: 1.8; fill: none; stroke-dasharray: 6 3; }
+      .arw   { fill: #59636e; }
+      .arwr  { fill: #bc4c00; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" class="arw"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" class="arwr"/>
+    </marker>
+  </defs>
+
+  <rect width="1000" height="580" fill="#ffffff"/>
+  <text x="24" y="40" class="t ttl">Claude 环境：三个入口，一个出口</text>
+
+  <rect x="24" y="64" width="220" height="456" rx="12" class="zone"/>
+  <text x="40" y="88" class="t zl">你的程序</text>
+
+  <rect x="300" y="64" width="404" height="456" rx="12" class="zone"/>
+  <text x="316" y="88" class="t zl">Clash Verge（mihomo 内核）</text>
+
+  <rect x="760" y="64" width="216" height="456" rx="12" class="zone"/>
+  <text x="776" y="88" class="t zl">出口</text>
+
+  <rect x="256" y="110" width="12" height="66" rx="3" class="wall"/>
+  <rect x="256" y="298" width="12" height="66" rx="3" class="wall"/>
+  <text x="262" y="104" text-anchor="middle" class="t wl">WFP</text>
+  <text x="262" y="292" text-anchor="middle" class="t wl">WFP</text>
+
+  <rect x="40" y="110" width="188" height="66" rx="9" class="app"/>
+  <text x="134" y="137" text-anchor="middle" class="t b">Claude Code</text>
+  <text x="134" y="158" text-anchor="middle" class="t s">settings.json 的 env</text>
+
+  <rect x="40" y="204" width="188" height="66" rx="9" class="app"/>
+  <text x="134" y="231" text-anchor="middle" class="t b">专用 Chrome</text>
+  <text x="134" y="252" text-anchor="middle" class="t s">桌面快捷方式启动参数</text>
+
+  <rect x="40" y="298" width="188" height="66" rx="9" class="app"/>
+  <text x="134" y="325" text-anchor="middle" class="t b">Claude Desktop</text>
+  <text x="134" y="346" text-anchor="middle" class="t s">HKLM 策略 egressProxyUrl</text>
+
+  <rect x="40" y="392" width="188" height="66" rx="9" class="app"/>
+  <text x="134" y="419" text-anchor="middle" class="t b">其他应用</text>
+  <text x="134" y="440" text-anchor="middle" class="t s">不设置代理</text>
+
+  <rect x="320" y="110" width="152" height="66" rx="9" class="port"/>
+  <text x="396" y="137" text-anchor="middle" class="t ln">HTTP 43865</text>
+  <text x="396" y="158" text-anchor="middle" class="t s">混合端口（设置页）</text>
+
+  <rect x="320" y="204" width="152" height="66" rx="9" class="port"/>
+  <text x="396" y="231" text-anchor="middle" class="t ln">SOCKS 43866</text>
+  <text x="396" y="252" text-anchor="middle" class="t s">脚本建的监听</text>
+
+  <rect x="320" y="298" width="152" height="66" rx="9" class="port"/>
+  <text x="396" y="325" text-anchor="middle" class="t ln">HTTP 43867</text>
+  <text x="396" y="346" text-anchor="middle" class="t s">脚本建的监听</text>
+
+  <rect x="320" y="392" width="152" height="66" rx="9" class="port"/>
+  <text x="396" y="419" text-anchor="middle" class="t b">TUN 虚拟网卡</text>
+  <text x="396" y="440" text-anchor="middle" class="t s">接管全机流量</text>
+
+  <rect x="516" y="110" width="176" height="180" rx="9" class="rules"/>
+  <text x="528" y="134" class="t b">规则链（命中即停）</text>
+  <text x="528" y="160" class="t x">① IN-NAME:43866 入组</text>
+  <text x="528" y="184" class="t x">② Claude 域名 / IP / ASN</text>
+  <text x="528" y="208" class="t x">③ DoH 端点 → DIRECT</text>
+  <text x="528" y="232" class="t x">④ 订阅规则（国内直连）</text>
+  <text x="528" y="256" class="t x">⑤ MATCH 兜底</text>
+
+  <rect x="516" y="372" width="176" height="88" rx="9" class="mute"/>
+  <text x="604" y="406" text-anchor="middle" class="t b">订阅自带组 / DIRECT</text>
+  <text x="604" y="430" text-anchor="middle" class="t s">普通流量、国内流量</text>
+
+  <rect x="776" y="170" width="184" height="72" rx="10" class="sink"/>
+  <text x="868" y="202" text-anchor="middle" class="t b">Anthropic 官方服务</text>
+  <text x="868" y="226" text-anchor="middle" class="t s">api.anthropic.com / claude.ai</text>
+
+  <rect x="776" y="282" width="184" height="104" rx="10" class="exit"/>
+  <text x="868" y="316" text-anchor="middle" class="t b" style="font-size:17px">ACCOUNT-US</text>
+  <text x="868" y="342" text-anchor="middle" class="t s">select · 你手选的节点</text>
+  <text x="868" y="364" text-anchor="middle" class="t s">不自动切换</text>
+
+  <path d="M228,143 H314" class="flow" marker-end="url(#a)"/>
+  <path d="M228,237 H314" class="flow" marker-end="url(#a)"/>
+  <path d="M228,331 H314" class="flow" marker-end="url(#a)"/>
+  <path d="M228,425 H314" class="flow" marker-end="url(#a)"/>
+
+  <path d="M472,143 L512,152" class="flow" marker-end="url(#a)"/>
+  <path d="M472,237 L512,206" class="flow" marker-end="url(#a)"/>
+  <path d="M472,425 L512,262" class="flow" marker-end="url(#a)"/>
+
+  <path d="M604,290 V366" class="flow" marker-end="url(#a)"/>
+
+  <path d="M692,200 L736,200 L736,310 L770,310" class="flow" marker-end="url(#a)"/>
+  <path d="M472,331 L708,331 L708,350 L770,350" class="flowr" marker-end="url(#ar)"/>
+  <path d="M868,282 V248" class="flow" marker-end="url(#a)"/>
+
+  <rect x="516" y="306" width="176" height="22" fill="#ffffff"/>
+  <text x="604" y="322" text-anchor="middle" class="t" style="font-size:12px;fill:#bc4c00;font-weight:600">指定 proxy，不看规则</text>
+
+  <text x="500" y="542" text-anchor="middle" class="t cap">三个入口各有专用端口，最终都汇到同一个出口；节点挂了就断，不会自动切换、更不会退回直连。</text>
+  <text x="500" y="564" text-anchor="middle" class="t cp2">红色竖条 = WFP 程序级直连防护：程序只允许连本机端口，绕过代理直连外网会被内核拦下。</text>
+</svg>
