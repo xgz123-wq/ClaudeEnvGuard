@@ -1,19 +1,102 @@
-# README
+# Claude 环境卫士 v2
 
-## About
+按**出口 IP** 检查并修复 Claude 三个入口（专用浏览器、Claude Code、Claude Desktop）的使用环境。配合「Claude 环境分享包」使用：分享包负责搭环境，本工具负责体检、一键修复和还原。
 
-This is the official Wails Vanilla-TS template.
+## 怎么用
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+| 场景 | 做法 |
+|---|---|
+| 日常体检 | 双击桌面「Claude 环境卫士」，打开即自动检查，约 5 秒出完整结果 |
+| 有没配好的项 | 点右上角「一键修复」，看清每一处改动后勾选执行；需要管理员的项只弹一次 UAC |
+| 修错了 / 想撤销 | 点「还原」，选一次修复整次撤销 |
+| 换账号 / 重新登录 | 在对应页签点「清理登录…」，先列清单、确认后才删 |
+| 命令行或给 AI 用 | `ceg check`、`ceg fix --plan`，见下表 |
 
-## Live Development
+- **首次运行**：exe 没有代码签名，Windows SmartScreen 可能提示「已保护你的电脑」，点「更多信息 → 仍要运行」。
+- **依赖**：图形界面需要 WebView2 运行库（Windows 11 自带）；命令行版 `ceg.exe` 不依赖它。
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## 命令行（ceg.exe）
 
-## Building
+| 命令 | 作用 |
+|---|---|
+| `ceg check [--browser 名字] [--offline] [--json] [--verbose]` | 全量检查；`--offline` 跳过联网项 |
+| `ceg fix --plan [--json] [--alias 名字]` | 只列修复计划，不改任何东西 |
+| `ceg fix --apply --items default` | 执行计划里默认勾选的修复（先备份） |
+| `ceg fix --apply --items sys.timezone,cli.proxy` | 执行指定修复 |
+| `ceg restore [--list] [--id 备份编号]` | 还原某次修复，不带 `--id` 还原最近一次 |
+| `ceg clean code\|desktop\|browser --plan` / `--yes` | 清理登录数据：先看清单，再确认执行 |
 
-To build a redistributable, production mode package, use `wails build`.
+- **退出码**：0 全部通过；1 有警告或未知；2 有失败；3 工具自身出错。
+- **JSON**：`--json` 输出与图形界面同一份数据结构（`internal/model`）。
+
+## 检查项
+
+「类型」：**固定** = 和地区无关，谁都该这样；**随 IP** = 目标值按出口所在地推算，换节点会跟着变；**信息** = 只做参考。带「可选」的不计入结论，只在「可选优化」里提示。
+
+| ID | 入口 | 检查 | 类型 | 一键修复 |
+|---|---|---|---|---|
+| P1 | 总览 | 三个专用端口（默认 43865/43866/43867）由代理客户端监听 | 固定 | 否（装 Clash 属分享包） |
+| P2 | 总览 | Clash Verge：TUN 开、系统代理关、混合端口一致、两个专用监听器存在 | 固定 | 否 |
+| P3 | 总览 | 三个入口从同一个出口 IP 出去 | 固定 | 否 |
+| P4 | 总览 | 出口不在 Claude 不支持的地区 | 固定 | 否 |
+| P5 | 总览 | 出口 IP 质量（ip.net.coffee 信任评分、是否住宅） | 信息 | 否 |
+| B1 | 浏览器 | 有独立数据目录 + 桌面快捷方式 | 固定 | 新建 / 补快捷方式 |
+| B2 | 浏览器 | 快捷方式启动的是 Chrome | 固定 | 是 |
+| B3 | 浏览器 | 走浏览器专用 SOCKS5 端口 | 固定 | 是 |
+| B4 | 浏览器 | **DNS 防漏**：域名交给代理解析，且代理那头不用中国 DNS | 固定 | 参数可修；节点 DNS 需改 Clash |
+| B5 | 浏览器 | **WebRTC 防漏**：禁用非代理 UDP | 固定 | 是 |
+| B6 | 浏览器 | 浏览器语言与出口地区一致（英语任何地区都接受） | 随 IP | 是 |
+| B7 | 浏览器 | 正在运行的窗口带着防护参数（防止绕开快捷方式打开） | 固定 | 否（关掉重开） |
+| B8 | 浏览器 | 经浏览器端口能到 claude.ai | 固定 | 否 |
+| C1–C6 | CLI | 安装、settings.json 代理、无第三方接口变量、全局代理变量、自动更新（装了防护时）、API 可达 | 固定 | C2–C5 可修 |
+| D1–D4 | Desktop | 安装、HKLM 代理策略（含同层 disableAutoUpdates）、直连防护证据、可达 | 固定 | D2 可修（需管理员） |
+| S1 | 系统 | 系统时区与出口当前时差一致；「自动设置时区」开着会提示 | 随 IP | 是 |
+| S2 | 系统 | 区域格式与「国家或地区」（可选） | 随 IP | 是，默认不勾 |
+| S3 | 系统 | Windows 显示语言（可选） | 随 IP | 否，给手动步骤 |
+| S4 | 系统 | **IPv6 防漏**：不经代理请求纯 IPv6 地址，看能否绕出去 | 固定 | IPv4 优先（需管理员、重启） |
+| S5 | 系统 | 不走专用端口的程序用的 DNS（可选、仅参考） | 信息 | 否 |
+| S6 | 系统 | Windows 系统代理（可选） | 信息 | 否 |
+| S7 | 系统 | Anthropic 网段 `160.79.104.0/23` 直连阻断（可选） | 固定 | 是，默认不勾 |
+
+## 「随 IP」怎么定目标
+
+1. 三个入口各自经自己的端口请求 `claude.ai/cdn-cgi/trace`，拿到 Claude 实际看到的 IP 和国家。
+2. 用 ip.net.coffee 的 `iprisk` 接口查城市、IANA 时区、信任评分；失败时退到 ipinfo.io；再失败就只用国家和该国默认时区。
+3. 时区按 CLDR `windowsZones` 换成 Windows 时区 ID（内置在程序里）；语言按国家常用语言，查不到用 `en-US`。
+4. 优先用浏览器入口的出口；用户在「设置」里手选地区时以手选为准。
+
+## 状态与兜底
+
+- **五种状态**：通过、警告、失败、未知、不适用。读不到、超时、出错一律「未知」，**绝不显示通过**；联网项没回来之前显示「检测中」。
+- **隔离**：本地每个收集器独立超时（1.5–2.5 秒）、独立捕获异常；联网阶段总预算 14 秒，单个请求 6 秒。
+- **网络探测**：每个请求都显式指定走哪个端口，忽略进程环境里的 `HTTPS_PROXY`；Claude 域名只经专用端口访问。
+- **修复**：每个动作要么全部完成，要么自动撤回；每步执行前把旧值或旧文件存进备份；`settings.json` 格式损坏时拒绝改写。
+- **提权**：需要管理员的动作交给同一个 exe 的提权子进程执行，请求文件只接受本工具备份目录，且每一步都要通过白名单校验（只允许改 Claude 策略、时区、IPv6、指定环境变量、指定防火墙规则）。
+- **清理**：只删白名单内的登录和缓存数据；目标程序在运行时拒绝；执行前重新确认进程状态；登录凭据不留备份。
+
+## 数据位置
+
+| 内容 | 位置 |
+|---|---|
+| 设置 | `%LOCALAPPDATA%\ClaudeEnvGuard\设置.json` |
+| 修复备份 | `%LOCALAPPDATA%\ClaudeEnvGuard\备份\<时间>\`（`manifest.json` + 原文件副本） |
+| 运行日志 | `%LOCALAPPDATA%\ClaudeEnvGuard\日志\yyyyMMdd.log`，保留 7 天 |
+| 界面缓存 | `%APPDATA%\ClaudeEnvGuard.exe\`（WebView2） |
+
+## 开发
+
+| 要做什么 | 命令 |
+|---|---|
+| 测试 + 打包 | `pwsh -File 打包.ps1`（加 `-Deploy` 复制到上一级目录） |
+| 只跑测试 | `go test ./...` |
+| 真机只读测速 | `$env:CEG_REAL=1; go test ./internal/facts -run TestReal -v` |
+| 界面预览（模拟数据） | `cd frontend; npm run dev`，地址加 `?s=real` / `?s=fresh` / `?s=split` 切换场景（`dev/*.json` 由 `ceg check --json` 生成，不入库） |
+
+- **结构**：`internal/facts` 收集现场（只读）→ `internal/checks` 纯函数判定 → `internal/fixes` 计划/执行/还原 → `internal/engine` 串起来；`app.go` + `frontend/` 是界面，`cmd/ceg` 是命令行。所有系统调用都在 `internal/platform` 的 `OS` 接口后面，测试用 `Fake`。
+- **工具链**：Go 1.27（`%LOCALAPPDATA%\Programs\go`）、Wails v2.14、Node 24。不要用 conda 的 python，也不需要 Python。
+
+## 已知限制
+
+- **直连防护（D3）**：实时 WFP 规则需要管理员才能读，这里只核对分享包留下的证据文件和程序哈希。
+- **网页实测**：WebRTC、浏览器 JS 时区等只能在浏览器里看；工具检查的是启动参数和系统设置，最终以专用浏览器打开 ip.net.coffee/claude 人工复核为准（浏览器页签有按钮）。
+- **其他代理客户端**：端口、出口、DNS 等通用项都能查；P2 只认 Clash Verge 的配置文件。
