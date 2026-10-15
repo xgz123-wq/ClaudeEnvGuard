@@ -18,6 +18,11 @@ foreach ($v in 'HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'https_proxy', 'http_pr
 
 Push-Location $root
 try {
+    # 新克隆的仓库没有 frontend\dist，main 包的 go:embed 会编译失败；先放占位文件，wails build 会重新生成
+    if (-not (Test-Path frontend\dist)) {
+        New-Item -ItemType Directory frontend\dist | Out-Null
+        Set-Content frontend\dist\placeholder.txt 'wails build 会覆盖本目录'
+    }
     if (-not $SkipTests) {
         Write-Host '== 单元测试 ==' -ForegroundColor Cyan
         go test ./...

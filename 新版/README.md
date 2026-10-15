@@ -94,6 +94,7 @@
 | 真机只读测速 | `$env:CEG_REAL=1; go test ./internal/facts -run TestReal -v` |
 | 界面预览（模拟数据） | `cd frontend; npm run dev`，地址加 `?s=real` / `?s=fresh` / `?s=split` 切换场景（`dev/*.json` 由 `ceg check --json` 生成，不入库） |
 
+- **开发规范**（分支、版本号、上线步骤）：见上级目录 [README.md](../README.md)。
 - **结构**：`internal/facts` 收集现场（只读）→ `internal/checks` 纯函数判定 → `internal/fixes` 计划/执行/还原 → `internal/engine` 串起来；`app.go` + `frontend/` 是界面，`cmd/ceg` 是命令行。所有系统调用都在 `internal/platform` 的 `OS` 接口后面，测试用 `Fake`。
 - **工具链**：Go 1.27（`%LOCALAPPDATA%\Programs\go`）、Wails v2.14、Node 24。不要用 conda 的 python，也不需要 Python。
 
