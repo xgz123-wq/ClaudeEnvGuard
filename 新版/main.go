@@ -42,13 +42,15 @@ func main() {
 	}
 	self, _ := os.Executable()
 	app := NewApp(engine.New(sys, version.Version, self))
+	width, height, minWidth, minHeight := fitWindow(1180, 860, 960, 640)
+	logx.Printf("窗口尺寸 %dx%d（最小 %dx%d）", width, height, minWidth, minHeight)
 
 	err := wails.Run(&options.App{
 		Title:            "Claude 环境卫士",
-		Width:            1180,
-		Height:           860,
-		MinWidth:         960,
-		MinHeight:        640,
+		Width:            width,
+		Height:           height,
+		MinWidth:         minWidth,
+		MinHeight:        minHeight,
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 244, G: 241, B: 234, A: 1},
 		OnStartup:        app.startup,
