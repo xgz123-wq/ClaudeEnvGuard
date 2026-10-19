@@ -93,6 +93,15 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
+// Signature 是文件的 Authenticode 签名。Valid 表示签名和证书链都校验通过；
+// Org 是签名证书主题里的组织名（O=），读不到时为空。
+type Signature struct {
+	Valid   bool   `json:"valid"`
+	Status  string `json:"status,omitempty"` // 校验不通过时的原因
+	Subject string `json:"subject,omitempty"`
+	Org     string `json:"org,omitempty"`
+}
+
 // ErrAccessDenied 表示需要管理员权限。
 var ErrAccessDenied = errors.New("权限不足（需要管理员）")
 
@@ -130,4 +139,6 @@ type OS interface {
 	UILanguage() string
 	BroadcastEnvChange()
 	GlobalIPv6() []string
+	// FileSignature 校验文件的 Authenticode 签名（不联网查吊销）。
+	FileSignature(path string) (Signature, error)
 }

@@ -84,3 +84,25 @@ func TestRealLnkParse(t *testing.T) {
 func expand(s string) string {
 	return os.ExpandEnv(strings.NewReplacer("%ProgramFiles%", os.Getenv("ProgramFiles"), "%LOCALAPPDATA%", os.Getenv("LOCALAPPDATA"), "%SystemRoot%", os.Getenv("SystemRoot"), "%USERPROFILE%", os.Getenv("USERPROFILE")).Replace(s))
 }
+
+// TestRealFileSignature 在真机上读 Claude Code CLI 的签名。只读。
+// 运行：CEG_REAL=1 go test ./internal/facts -run TestRealFileSignature -v
+func TestRealFileSignature(t *testing.T) {
+	if os.Getenv("CEG_REAL") == "" {
+		t.Skip("设置 CEG_REAL=1 才在真机上运行")
+	}
+	sys := platform.NewWindows()
+	exe := os.ExpandEnv(`${APPDATA}\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe`)
+	st := time.Now()
+	sig, err := sys.FileSignature(exe)
+	t.Logf("%v %+v（%v）", err, sig, time.Since(st))
+	if err != nil || !sig.Valid || sig.Org != AnthropicSignerOrg {
+		t.Errorf("CLI 应是有效的 Anthropic 签名")
+	}
+	self, _ := os.Executable() // 测试程序本身没签名
+	sig, _ = sys.FileSignature(self)
+	t.Logf("未签名：%+v", sig)
+	if sig.Valid {
+		t.Errorf("测试程序不该有有效签名")
+	}
+}

@@ -166,6 +166,9 @@ type GuardTarget struct {
 	Expected string
 	Changed  bool
 	Missing  bool
+	// AcceptedBySignature：哈希对不上，但这是会自更新的 CLI 目标且 Anthropic 签名有效，按签名放行（Changed=false）。
+	AcceptedBySignature bool
+	Signer              string // 签名证书主题，只在核对过签名时有值
 }
 
 // FirewallFacts 是 Anthropic 网段直连阻断规则。

@@ -992,7 +992,7 @@ func (e *ev) desktop() {
 	case gd.Err != "":
 		r.Status, r.Current, r.Detail = model.Unknown, "证据文件异常", gd.Err
 	default:
-		var issues []string
+		var issues, bySig []string
 		r.Current = "状态 " + orNone(gd.Status)
 		if !strings.HasPrefix(strings.ToLower(gd.Status), "installed") {
 			issues = append(issues, "状态不是已安装（"+orNone(gd.Status)+"）")
@@ -1009,8 +1009,14 @@ func (e *ev) desktop() {
 					issues = append(issues, t.Name+" 的程序文件不在了")
 				} else if t.Changed {
 					issues = append(issues, t.Name+" 的程序已更新，和防护记录对不上")
+				} else if t.AcceptedBySignature {
+					bySig = append(bySig, t.Name)
 				}
 			}
+		}
+		sigNote := ""
+		if len(bySig) > 0 {
+			sigNote = "CLI 已自更新，按 Anthropic 签名放行（" + strings.Join(bySig, "、") + "）。"
 		}
 		if gd.VerifyAt != "" {
 			r.Current += "，最近验证 " + gd.VerifyAt + "（" + orNone(gd.VerifyStatus) + "）"
@@ -1018,6 +1024,9 @@ func (e *ev) desktop() {
 		switch {
 		case len(issues) > 0:
 			r.Status, r.Detail = model.Warn, strings.Join(issues, "；")
+			if sigNote != "" {
+				r.Detail += "。另：" + sigNote
+			}
 			r.Advice = "按分享包「Desktop防护/更新三端Claude.ps1 -Action Plan」的提示补同步防护。"
 		case !gd.HashChecked && e.pending:
 			r = e.netPending(r)
@@ -1025,7 +1034,11 @@ func (e *ev) desktop() {
 		case !gd.HashChecked:
 			r.Status, r.Detail = model.Unknown, "没来得及核对程序文件哈希。"
 		default:
-			r.Status, r.Detail = model.Pass, "防护证据完整，程序文件和记录一致。实时规则需要管理员才能读取，这里只核对证据文件。"
+			r.Status, r.Detail = model.Pass, "防护证据完整，程序文件和记录一致。"
+			if sigNote != "" {
+				r.Detail = "防护证据完整；" + sigNote + "其余程序文件和记录一致。"
+			}
+			r.Detail += "实时规则需要管理员才能读取，这里只核对证据文件。"
 		}
 	}
 	e.add(r)

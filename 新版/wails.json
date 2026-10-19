@@ -13,7 +13,7 @@
   "info": {
     "companyName": "Claude 环境分享包",
     "productName": "Claude 环境卫士",
-    "productVersion": "2.0.1",
+    "productVersion": "2.0.2",
     "copyright": "开源复刻版",
     "comments": "按出口 IP 检查并修复 Claude 浏览器、CLI、Desktop 三个入口的环境"
   }

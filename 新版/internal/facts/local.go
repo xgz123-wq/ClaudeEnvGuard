@@ -769,8 +769,19 @@ func collectGuard(sys platform.OS, s appconfig.Settings) GuardFacts {
 	return g
 }
 
+// AnthropicSignerOrg 是 Claude 程序签名证书的组织名。
+const AnthropicSignerOrg = "Anthropic, PBC"
+
+// signatureAcceptable 判断哈希不一致的目标能否按签名放行。和分享包总检 Test-GuardBinary 一致：
+// 只有名字以「Claude Code npm」开头的目标（CLI 会原地自更新，路径不变，WFP 规则仍生效）；
+// Desktop 和 VS Code 插件只认登记哈希。
+func signatureAcceptable(name string) bool {
+	return strings.HasPrefix(name, "Claude Code npm")
+}
+
 // HashGuardTargets 计算被防护程序的哈希（较慢，放在联网阶段做）。
-func HashGuardTargets(ctx context.Context, g *GuardFacts) {
+// CLI 目标哈希对不上时再校验签名，有效且签名方是 Anthropic 就放行。
+func HashGuardTargets(ctx context.Context, sys platform.OS, g *GuardFacts) {
 	for i := range g.Targets {
 		if ctx.Err() != nil {
 			return
@@ -788,6 +799,14 @@ func HashGuardTargets(ctx context.Context, g *GuardFacts) {
 			return
 		}
 		t.Changed = !strings.EqualFold(hex.EncodeToString(h.Sum(nil)), t.Expected)
+		if t.Changed && signatureAcceptable(t.Name) {
+			if sig, err := sys.FileSignature(t.Path); err == nil {
+				t.Signer = sig.Subject
+				if sig.Valid && sig.Org == AnthropicSignerOrg {
+					t.Changed, t.AcceptedBySignature = false, true
+				}
+			}
+		}
 	}
 	g.HashChecked = true
 }

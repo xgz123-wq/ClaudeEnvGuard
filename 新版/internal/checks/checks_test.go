@@ -385,4 +385,18 @@ func TestGuardEvidence(t *testing.T) {
 	if m["C5"].Status != model.Pass {
 		t.Errorf("装了防护且关了自动更新应通过：%+v", m["C5"])
 	}
+
+	// CLI 自更新按签名放行：不报警告，Detail 说明放行
+	f.Guard.Targets = []facts.GuardTarget{{Name: "Desktop"}, {Name: "Claude Code npm 启动目标", AcceptedBySignature: true}}
+	m = byID(Evaluate(f, ResolveTarget(f)))
+	if m["D3"].Status != model.Pass || !strings.Contains(m["D3"].Detail, "按 Anthropic 签名放行") {
+		t.Errorf("CLI 签名放行应通过并注明：%+v", m["D3"])
+	}
+	// 同时有插件更新：仍警告，提示补同步，放行的 CLI 不算问题
+	f.Guard.Targets = append(f.Guard.Targets, facts.GuardTarget{Name: "Claude Code VS Code 插件", Changed: true})
+	m = byID(Evaluate(f, ResolveTarget(f)))
+	if m["D3"].Status != model.Warn || !strings.Contains(m["D3"].Detail, "VS Code 插件 的程序已更新") ||
+		strings.Contains(m["D3"].Detail, "启动目标 的程序已更新") || !strings.Contains(m["D3"].Advice, "更新三端Claude.ps1") {
+		t.Errorf("插件更新应警告且只点名插件：%+v", m["D3"])
+	}
 }

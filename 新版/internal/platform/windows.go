@@ -560,3 +560,87 @@ func (w *Windows) GlobalIPv6() []string {
 	}
 	return out
 }
+
+// ---------------------------------------------------------------- 签名
+
+var (
+	modwintrust                        = windows.NewLazySystemDLL("wintrust.dll")
+	procWTHelperProvDataFromStateData  = modwintrust.NewProc("WTHelperProvDataFromStateData")
+	procWTHelperGetProvSignerFromChain = modwintrust.NewProc("WTHelperGetProvSignerFromChain")
+	procWTHelperGetProvCertFromChain   = modwintrust.NewProc("WTHelperGetProvCertFromChain")
+)
+
+const (
+	wtdStateActionVerify  = 1
+	certNameAttrType      = 3          // CERT_NAME_ATTR_TYPE
+	certX500NameStr       = 3          // CERT_X500_NAME_STR
+	certNameStrReverseFlg = 0x02000000 // CERT_NAME_STR_REVERSE_FLAG：CN 在前，和 PowerShell 的 Subject 一致
+)
+
+// cryptProviderCert 只取 CRYPT_PROVIDER_CERT 开头用到的字段。
+type cryptProviderCert struct {
+	Size uint32
+	Cert *windows.CertContext
+}
+
+// FileSignature 用 WinVerifyTrust 校验签名，再从校验状态里取签名证书（链上第 0 张）的主题。
+// 不查吊销（WTD_REVOKE_NONE + 只用缓存），检查不联网也不卡。
+func (w *Windows) FileSignature(path string) (Signature, error) {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return Signature{}, err
+	}
+	fi := windows.WinTrustFileInfo{Size: uint32(unsafe.Sizeof(windows.WinTrustFileInfo{})), FilePath: p}
+	data := windows.WinTrustData{
+		Size:                            uint32(unsafe.Sizeof(windows.WinTrustData{})),
+		UIChoice:                        windows.WTD_UI_NONE,
+		RevocationChecks:                windows.WTD_REVOKE_NONE,
+		UnionChoice:                     windows.WTD_CHOICE_FILE,
+		FileOrCatalogOrBlobOrSgnrOrCert: unsafe.Pointer(&fi),
+		StateAction:                     wtdStateActionVerify,
+		ProvFlags:                       windows.WTD_CACHE_ONLY_URL_RETRIEVAL,
+	}
+	verr := windows.WinVerifyTrustEx(0, &windows.WINTRUST_ACTION_GENERIC_VERIFY_V2, &data)
+	defer func() {
+		data.StateAction = windows.WTD_STATEACTION_CLOSE
+		windows.WinVerifyTrustEx(0, &windows.WINTRUST_ACTION_GENERIC_VERIFY_V2, &data)
+	}()
+	sig := Signature{Valid: verr == nil}
+	if verr != nil {
+		sig.Status = verr.Error()
+	}
+	if data.StateData == 0 {
+		return sig, nil
+	}
+	prov, _, _ := procWTHelperProvDataFromStateData.Call(uintptr(data.StateData))
+	if prov == 0 {
+		return sig, nil
+	}
+	sgnr, _, _ := procWTHelperGetProvSignerFromChain.Call(prov, 0, 0, 0)
+	if sgnr == 0 {
+		return sig, nil
+	}
+	pc, _, _ := procWTHelperGetProvCertFromChain.Call(sgnr, 0)
+	if pc == 0 {
+		return sig, nil
+	}
+	cert := (*(**cryptProviderCert)(unsafe.Pointer(&pc))).Cert
+	if cert == nil {
+		return sig, nil
+	}
+	strType := uint32(certX500NameStr | certNameStrReverseFlg)
+	sig.Subject = certName(cert, windows.CERT_NAME_RDN_TYPE, unsafe.Pointer(&strType))
+	oid := append([]byte("2.5.4.10"), 0) // szOID_ORGANIZATION_NAME
+	sig.Org = certName(cert, certNameAttrType, unsafe.Pointer(&oid[0]))
+	return sig, nil
+}
+
+func certName(cert *windows.CertContext, nameType uint32, para unsafe.Pointer) string {
+	n := windows.CertGetNameString(cert, nameType, 0, para, nil, 0)
+	if n <= 1 {
+		return ""
+	}
+	buf := make([]uint16, n)
+	windows.CertGetNameString(cert, nameType, 0, para, &buf[0], n)
+	return windows.UTF16ToString(buf)
+}

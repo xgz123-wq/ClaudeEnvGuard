@@ -182,3 +182,56 @@ func TestCollectNetworkBudgetAndPorts(t *testing.T) {
 		t.Errorf("没监听的端口不应探测：%+v", d)
 	}
 }
+
+func TestHashGuardTargetsSignature(t *testing.T) {
+	dir := t.TempDir()
+	sys := platform.NewFake(dir)
+	sys.Sigs = map[string]platform.Signature{}
+	const wrongHash = "0000000000000000000000000000000000000000000000000000000000000000"
+	good := platform.Signature{Valid: true, Subject: `CN="Anthropic, PBC", O="Anthropic, PBC", C=US`, Org: "Anthropic, PBC"}
+	cases := []struct {
+		name, target string
+		sig          *platform.Signature
+		changed, ok  bool
+	}{
+		{"放行", "Claude Code npm 启动目标", &good, false, true},
+		{"签名方不对", "Claude Code npm 原生包", &platform.Signature{Valid: true, Subject: "CN=Evil Corp, O=Evil Corp", Org: "Evil Corp"}, true, false},
+		{"签名无效", "Claude Code npm 原生包", &platform.Signature{Valid: false, Status: "签名校验失败", Subject: good.Subject, Org: good.Org}, true, false},
+		{"未签名", "Claude Code npm 启动目标", nil, true, false},
+		{"Desktop 不放行", "Claude Desktop 主程序及内置浏览器", &good, true, false},
+		{"插件不放行", "Claude Code VS Code 插件", &good, true, false},
+	}
+	g := GuardFacts{Found: true}
+	for _, c := range cases {
+		p := filepath.Join(dir, "bin", c.name+".exe")
+		write(t, p, "new build "+c.name)
+		if c.sig != nil {
+			sys.Sigs[p] = *c.sig
+		}
+		g.Targets = append(g.Targets, GuardTarget{Name: c.target, Path: p, Expected: wrongHash})
+	}
+	HashGuardTargets(context.Background(), sys, &g)
+	if !g.HashChecked {
+		t.Fatal("应完成哈希核对")
+	}
+	for i, c := range cases {
+		got := g.Targets[i]
+		if got.Changed != c.changed || got.AcceptedBySignature != c.ok {
+			t.Errorf("%s：Changed=%v Accepted=%v，期望 %v %v", c.name, got.Changed, got.AcceptedBySignature, c.changed, c.ok)
+		}
+	}
+	if g.Targets[4].Signer != "" {
+		t.Errorf("非 CLI 目标不该去读签名：%q", g.Targets[4].Signer)
+	}
+
+	// 哈希一致时不看签名
+	p := filepath.Join(dir, "bin", "same.exe")
+	write(t, p, "same")
+	g = GuardFacts{Found: true, Targets: []GuardTarget{{Name: "Claude Code npm 启动目标", Path: p,
+		Expected: "0967115F2813A3541EAEF77DE9D9D5773F1C0C04314B0BBFE4FF3B3B1C55B5D5"}}}
+	sys.Sigs[p] = good
+	HashGuardTargets(context.Background(), sys, &g)
+	if g.Targets[0].Changed || g.Targets[0].AcceptedBySignature {
+		t.Errorf("哈希一致应直接通过，不算签名放行：%+v", g.Targets[0])
+	}
+}

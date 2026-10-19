@@ -175,7 +175,7 @@ func CollectNetwork(ctx context.Context, sys platform.OS, f *Facts, n Net, budge
 		g := f.Guard
 		g.Targets = append([]GuardTarget(nil), f.Guard.Targets...)
 		if g.Found && len(g.Targets) > 0 {
-			HashGuardTargets(ctx, &g)
+			HashGuardTargets(ctx, sys, &g)
 			apply(func() { f.Guard = g })
 		}
 	})

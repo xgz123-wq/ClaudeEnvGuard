@@ -22,6 +22,7 @@ type Fake struct {
 	Admin       bool
 	UILang      string
 	IPv6        []string
+	Sigs        map[string]Signature // 路径 → 签名；没登记的文件视为未签名
 	RunLog      []string
 	RunFunc     func(name string, args ...string) (string, int, error)
 	ElevateFunc func(exe string, args []string) (int, error)
@@ -173,3 +174,10 @@ func (f *Fake) IsAdmin() bool        { return f.Admin }
 func (f *Fake) UILanguage() string   { return f.UILang }
 func (f *Fake) BroadcastEnvChange()  {}
 func (f *Fake) GlobalIPv6() []string { return f.IPv6 }
+
+func (f *Fake) FileSignature(path string) (Signature, error) {
+	if s, ok := f.Sigs[path]; ok {
+		return s, nil
+	}
+	return Signature{Status: "未签名"}, nil
+}
