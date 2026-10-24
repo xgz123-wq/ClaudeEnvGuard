@@ -3,7 +3,8 @@
     测试并打包 Claude 环境卫士（图形界面 ClaudeEnvGuard.exe + 命令行 ceg.exe）。
 .DESCRIPTION
     默认：跑全部单元测试 → 构建两个 exe 到 build\bin。
-    -Deploy：再把两个 exe 复制到上一级目录（D:\Tools\ClaudeEnvGuard），桌面图标指向的就是那里。
+    -Deploy：再把两个 exe 复制到上一级目录（D:\Tools\ClaudeEnvGuard），桌面图标指向的就是那里；
+    覆盖前先把那里现有的两个 exe 另存为 ClaudeEnvGuard-v<旧版本>.exe、ceg-v<旧版本>.exe，已有同名备份就不动它。
     依赖：Go（%LOCALAPPDATA%\Programs\go）、wails（%USERPROFILE%\go\bin）、Node。不用 conda。
 #>
 [CmdletBinding()]
@@ -11,6 +12,26 @@ param([switch] $Deploy, [switch] $SkipTests)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
+
+# 部署前留旧版：版本号问旧的 ceg.exe（exe 里没写版本资源）；问不到就用旧 exe 的修改时间
+function Backup-Deployed([string] $Dest) {
+    $gui = Join-Path $Dest 'ClaudeEnvGuard.exe'
+    $cli = Join-Path $Dest 'ceg.exe'
+    if (-not (Test-Path $gui) -and -not (Test-Path $cli)) { Write-Host '目标目录还没有程序，不用备份'; return }
+    $ver = $null
+    if (Test-Path $cli) {
+        $out = @(& $cli version 2>$null)   # 先收完再取首行：管道里用 Select -First 会提前截断，$LASTEXITCODE 不会更新
+        if ($LASTEXITCODE -eq 0 -and "$($out[0])".Trim() -match '^\d+\.\d+\.\d+$') { $ver = "$($out[0])".Trim() }
+    }
+    $tag = if ($ver) { "v$ver" } else { '旧-' + (Get-Item (@($gui, $cli) | Where-Object { Test-Path $_ } | Select-Object -First 1)).LastWriteTime.ToString('yyyyMMdd-HHmmss') }
+    foreach ($src in $gui, $cli) {
+        if (-not (Test-Path $src)) { continue }
+        $bak = Join-Path $Dest ('{0}-{1}.exe' -f [IO.Path]::GetFileNameWithoutExtension($src), $tag)
+        if (Test-Path $bak) { Write-Host "已有 $(Split-Path $bak -Leaf)，保留原备份不覆盖"; continue }
+        Copy-Item $src $bak   # 复制不是移动：后面覆盖失败时，原程序还在
+        Write-Host "旧版另存为 $(Split-Path $bak -Leaf)"
+    }
+}
 $env:PATH = "$env:LOCALAPPDATA\Programs\go\bin;$env:USERPROFILE\go\bin;$env:PATH"
 # 国内拉依赖走 goproxy.cn；不改系统代理设置，只对本进程生效
 $env:GOPROXY = 'https://goproxy.cn,direct'
@@ -40,6 +61,7 @@ try {
         $dest = Split-Path $root -Parent
         $running = Get-Process ClaudeEnvGuard -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dest\*" }
         if ($running) { throw "环境卫士正在运行（PID $($running.Id -join ',')），请先关闭窗口再部署" }
+        Backup-Deployed $dest
         Copy-Item build\bin\ClaudeEnvGuard.exe, build\bin\ceg.exe -Destination $dest -Force
         Write-Host "已部署到 $dest" -ForegroundColor Green
     }

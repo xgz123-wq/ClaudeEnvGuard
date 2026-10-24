@@ -75,8 +75,8 @@
 
 1. 改代码，补对应的单元测试（系统调用走 `internal/platform` 的 `Fake`，不碰真机）。
 2. `pwsh -File 新版\打包.ps1`：跑全部测试并构建两个 exe；测试不过不会打包。
-3. **先留旧版**：把根目录当前的 `ClaudeEnvGuard.exe`、`ceg.exe` 另存为 `ClaudeEnvGuard-v<旧版本>.exe`、`ceg-v<旧版本>.exe`（`打包.ps1 -Deploy` 会直接覆盖，不会替你备份）。
-4. 关掉正在运行的环境卫士窗口，`pwsh -File 新版\打包.ps1 -Deploy` 部署到本目录。
+3. 关掉正在运行的环境卫士窗口，`pwsh -File 新版\打包.ps1 -Deploy` 部署到本目录。覆盖前会自动把旧的两个 exe 另存为 `ClaudeEnvGuard-v<旧版本>.exe`、`ceg-v<旧版本>.exe`，版本号从旧 `ceg.exe version` 读，读不到时用修改时间命名为 `-旧-<时间>`；已有同名备份就保留不覆盖。
+4. 看一眼输出里的「旧版另存为…」，确认旧版留下了。
 5. 双击桌面图标实测改动点；涉及修复、还原、清理、更新的，由本人在界面里操作确认。
 6. 提交 → 打标签 `git tag -a vX.Y.Z -m "一句话说明"` → `git push` 和 `git push --tags`。
 7. 发 Release：`gh release create vX.Y.Z ClaudeEnvGuard.exe ceg.exe --title vX.Y.Z --notes "一句话说明"`（在本目录执行）。
