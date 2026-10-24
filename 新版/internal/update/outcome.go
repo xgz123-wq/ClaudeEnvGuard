@@ -22,7 +22,7 @@ var (
 	// 安全类关键词优先：同一句里既有「下载」又有「签名」时按安全问题处理。
 	aiRe    = regexp.MustCompile(`签名|指纹|哈希|SHA|核验|Verify|审核|防护|架构|IFEO|策略|不一致|不符|不唯一|拒绝登记|回读`)
 	userRe  = regexp.MustCompile(`授权被取消|UAC|claude 进程在运行|Claude 正在运行|正在运行`)
-	retryRe = regexp.MustCompile(`(?i)curl 退出码|下载失败|官方入口无响应|没有返回跳转|npm view 没有返回|npm 安装 CLI 失败|没有返回 win32-x64|无法连接|积极拒绝|连接|超时|timed? ?out|timeout|SSL|TLS|网络|No such host|name resolution|远程主机|actively refused|EAI_AGAIN|ECONNRESET|ETIMEDOUT`)
+	retryRe = regexp.MustCompile(`(?i)curl 退出码|下载失败|官方入口无响应|官方市场无响应|没有返回跳转|npm view 没有返回|npm 安装 CLI 失败|没有返回 win32-x64|无法连接|积极拒绝|连接|超时|timed? ?out|timeout|SSL|TLS|网络|No such host|name resolution|远程主机|actively refused|EAI_AGAIN|ECONNRESET|ETIMEDOUT`)
 )
 
 // classify 按错误原文分层。

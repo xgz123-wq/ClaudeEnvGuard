@@ -4,6 +4,7 @@ package update
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -69,7 +70,12 @@ type Runner struct {
 	Root     string // %LOCALAPPDATA%\ClaudeNetworkGuard，脚本写记录的地方
 	CheckDir string // 卫士自己的查版本记录目录（每次覆盖）
 	// ChangedOnly 让 UAC 内的日常总检只查这次动过的项（需求文档第 3 节）。
-	ChangedOnly  bool
+	ChangedOnly bool
+	// UseScript 让查版本改回调用脚本 -Action Check（v2.3.0 起默认用 Go 查，见 gocheck.go）；对照和回退用。
+	UseScript bool
+	// Proxy 是查版本走的代理，和脚本一样只经 Desktop 专用端口。
+	Proxy        string
+	Src          Sources
 	CheckTimeout time.Duration
 	Now          func() time.Time
 
@@ -121,6 +127,8 @@ func New(sys platform.OS, shareRoot string) *Runner {
 		Root:         filepath.Join(p.LocalAppData, "ClaudeNetworkGuard"),
 		CheckDir:     filepath.Join(p.LocalAppData, "ClaudeEnvGuard", "更新检查"),
 		ChangedOnly:  true,
+		Proxy:        "http://127.0.0.1:43867",
+		Src:          DefaultSources,
 		CheckTimeout: 2 * time.Minute,
 		Now:          time.Now,
 	}
@@ -155,7 +163,11 @@ func (r *Runner) Check(ctx context.Context) View {
 		return v
 	}
 	r.run = nil
-	r.view = View{Phase: "checking", Title: "正在查三端版本…", Line: "三个版本源同时查，约 3 秒", Products: r.view.Products, History: r.view.History, Script: r.Script}
+	line := "三个版本源同时查，约 2 秒"
+	if r.UseScript {
+		line = "调用三端更新脚本查，约 3 秒"
+	}
+	r.view = View{Phase: "checking", Title: "正在查三端版本…", Line: line, Products: r.view.Products, History: r.view.History, Script: r.Script}
 	r.mu.Unlock()
 
 	v := r.doCheck(ctx)
@@ -184,23 +196,33 @@ func (r *Runner) doCheck(ctx context.Context) View {
 	_ = os.Remove(recPath) // 防止读到上一次的结果
 	cctx, cancel := context.WithTimeout(ctx, r.CheckTimeout)
 	defer cancel()
-	out, code, err := r.Sys.Run(cctx, r.Pwsh, r.args("-Action", "Check", "-RunDirectory", r.CheckDir)...)
+	var rec scriptRecord
+	if r.UseScript {
+		out, code, err := r.Sys.Run(cctx, r.Pwsh, r.args("-Action", "Check", "-RunDirectory", r.CheckDir)...)
+		if rerr := readJSON(recPath, &rec); rerr != nil {
+			reason := "脚本没有写出检查记录"
+			switch {
+			case err != nil:
+				reason = "启动脚本失败：" + err.Error()
+			case cctx.Err() != nil:
+				reason = "查版本超时（" + r.CheckTimeout.String() + "）"
+			default:
+				reason += fmt.Sprintf("（退出码 %d）：%s", code, tail(out, 300))
+			}
+			v.CheckSecs = round1(r.Now().Sub(start).Seconds())
+			v.CheckedAt = r.Now().Format("15:04")
+			logx.Printf("更新：查版本失败：%s", reason)
+			return checkFail(v, reason, r.Script)
+		}
+	} else {
+		rec = *r.goCheck(cctx)
+		// 和脚本一样留一份 检查记录.json，排查时两种来源看同一个文件
+		if b, err := json.MarshalIndent(rec, "", "  "); err == nil {
+			_ = os.WriteFile(recPath, b, 0o644)
+		}
+	}
 	v.CheckSecs = round1(r.Now().Sub(start).Seconds())
 	v.CheckedAt = r.Now().Format("15:04")
-	var rec scriptRecord
-	if rerr := readJSON(recPath, &rec); rerr != nil {
-		reason := "脚本没有写出检查记录"
-		switch {
-		case err != nil:
-			reason = "启动脚本失败：" + err.Error()
-		case cctx.Err() != nil:
-			reason = "查版本超时（" + r.CheckTimeout.String() + "）"
-		default:
-			reason += fmt.Sprintf("（退出码 %d）：%s", code, tail(out, 300))
-		}
-		logx.Printf("更新：查版本失败：%s", reason)
-		return checkFail(v, reason, r.Script)
-	}
 	if rec.Status != "checked" {
 		logx.Printf("更新：查版本失败：%s", rec.Error)
 		return checkFail(v, rec.Error, r.Script)

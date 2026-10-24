@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
@@ -33,7 +34,9 @@ type App struct {
 // NewApp 创建 App。
 func NewApp(eng *engine.Engine) *App {
 	s, _ := eng.Settings()
-	return &App{eng: eng, upd: update.New(eng.Sys, s.SharePackageRoot)}
+	upd := update.New(eng.Sys, s.SharePackageRoot)
+	upd.Proxy = fmt.Sprintf("http://127.0.0.1:%d", s.PortDesktop) // 查版本只经 Desktop 专用端口
+	return &App{eng: eng, upd: upd}
 }
 
 func (a *App) startup(ctx context.Context) {

@@ -53,7 +53,9 @@ type scriptTarget struct {
 	Name    string `json:"Name"`
 	Path    string `json:"Path"`
 	State   string `json:"State"` // unchanged / changed_signed / changed_unsigned / moved / missing
-	NewPath string `json:"NewPath"`
+	NewPath string `json:"NewPath,omitempty"`
+	SHA256  string `json:"SHA256,omitempty"`
+	Error   string `json:"Error,omitempty"` // 只有 Go 查版本会写：文件在但读不了时的原因
 }
 
 type maintenance struct {
@@ -113,6 +115,24 @@ func (o *orderedSeconds) UnmarshalJSON(b []byte) error {
 		o.Values[k] = v
 	}
 	return nil
+}
+
+// MarshalJSON 按原来的键顺序写回成普通对象，和脚本写的 Timing 一样（Go 查版本写 检查记录.json 时用）。
+func (o orderedSeconds) MarshalJSON() ([]byte, error) {
+	var b bytes.Buffer
+	b.WriteByte('{')
+	for i, k := range o.Keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		kb, _ := json.Marshal(k)
+		vb, _ := json.Marshal(o.Values[k])
+		b.Write(kb)
+		b.WriteByte(':')
+		b.Write(vb)
+	}
+	b.WriteByte('}')
+	return b.Bytes(), nil
 }
 
 // Has 判断某个计时点是否已经写下。

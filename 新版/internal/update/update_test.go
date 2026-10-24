@@ -107,6 +107,7 @@ func newHarness(t *testing.T, s *fakeScript) *harness {
 	}
 	_ = os.MkdirAll(r.Root, 0o755)
 	r.Pwsh = "pwsh.exe"
+	r.UseScript = true // 这组测试按脚本写的记录驱动；Go 查版本另见 gocheck_test.go
 	sys.RunFunc = s.run
 	return &harness{t: t, sys: sys, r: r, script: s}
 }

@@ -40,8 +40,8 @@ const usage = `Claude 环境卫士（命令行版） v%s
       只读：列出「记录」页的修复、还原、更新、清理。
   ceg clean   code|desktop|browser [--browser 名字] --plan|--yes [--json]
       清理登录数据。先用 --plan 看清单，确认后再用 --yes 执行。
-  ceg update  --check [--json]
-      只读：调用桌面「Claude-三端更新」脚本的 -Action Check，列出三端版本、4 个程序指纹和这次会做什么。
+  ceg update  --check [--json] [--script]
+      只读：查三端版本、4 个程序指纹和这次会做什么（Go 直接查，只经 Desktop 端口）；--script 改为调用桌面「Claude-三端更新」脚本的 -Action Check，对照用。
   ceg update  --apply
       一键更新（同桌面「Claude-三端更新」）：先退出全部 Claude；要动防护时弹一次 UAC。
   ceg version
@@ -391,6 +391,7 @@ func cmdUpdate(sys platform.OS, eng *engine.Engine, args []string, stdout, stder
 	check := fs.Bool("check", false, "只查版本（只读）")
 	apply := fs.Bool("apply", false, "一键更新")
 	asJSON := fs.Bool("json", false, "输出 JSON（只用于 --check）")
+	useScript := fs.Bool("script", false, "查版本改用脚本 -Action Check（默认 Go 查；对照用）")
 	if err := fs.Parse(args); err != nil {
 		return 3
 	}
@@ -400,10 +401,12 @@ func cmdUpdate(sys platform.OS, eng *engine.Engine, args []string, stdout, stder
 	}
 	s, _ := eng.Settings()
 	r := update.New(sys, s.SharePackageRoot)
+	r.Proxy = fmt.Sprintf("http://127.0.0.1:%d", s.PortDesktop)
+	r.UseScript = *useScript
 	ctx, cancel := checkCtx()
 	defer cancel()
 	if !*asJSON {
-		fmt.Fprintln(stderr, "正在查三端版本（三个版本源同时查，约 3 秒）…")
+		fmt.Fprintln(stderr, "正在查三端版本（三个版本源同时查，约 2 秒）…")
 	}
 	v := r.Check(ctx)
 	if *check {

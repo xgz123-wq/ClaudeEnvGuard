@@ -31,7 +31,7 @@
 | `ceg restore --id 备份编号 --items sys.timezone` | 按项还原：只还原列出的动作，其余保持现状 |
 | `ceg records [--json]` | 只读：列出「记录」页的修复、还原、更新、清理 |
 | `ceg clean code\|desktop\|browser --plan` / `--yes` | 清理登录数据：先看清单，再确认执行 |
-| `ceg update --check [--json]` | 只读：查三端版本、4 个程序指纹和这次会做什么 |
+| `ceg update --check [--json] [--script]` | 只读：查三端版本、4 个程序指纹和这次会做什么；默认 Go 直接查（约 2 秒），`--script` 改调脚本 `-Action Check`，对照用 |
 | `ceg update --apply` | 一键更新（同桌面「Claude-三端更新」）；先退出全部 Claude |
 
 - **退出码**：0 全部通过；1 有警告或未知；2 有失败；3 工具自身出错。`update`：0 已是最新或更新完成；1 有可更新的或要先处理；2 失败或安全检查没过。
@@ -86,7 +86,8 @@
 ## 更新页（v2.1.0 起）
 
 - **只套界面**：更新仍由 `AI应用开发\docs\配置\Claude环境\Desktop防护\更新三端Claude.ps1` 执行（找不到时依次找设置里的分享包目录、`桌面\Claude环境分享版`）；卫士只调用它、读它写的记录文件，不下载、不安装、不改防护。
-- **调用方式**：查版本 `-Action Check -RunDirectory <查版本记录目录>`（只读）；一键更新在隐藏窗口跑 `-RunDirectory <更新记录-时间> -ChangedOnly`（UAC 内的日常总检只查这次动过的项）。两个参数不传时脚本行为不变，桌面图标照常可用。
+- **查版本用 Go（v2.3.0 起）**：`internal/update/gocheck.go` 做和脚本 `-Action Check` 同样的事——Desktop 官方跳转入口、`registry.npmjs.org`、VS Code 官方市场三个源同时查，只经 Desktop 专用端口；本机版本读 MSIX 包全名、`package.json`、`extensions.json`；4 个程序的指纹同时算，对不上才用 WinVerifyTrust 校验 Anthropic 签名；结果写成同样的 `检查记录.json`。本机约 2 秒（脚本约 3 秒，另加启动 PowerShell）。来源、判定规则、出错原文都照脚本同名函数，**改脚本的查版本逻辑时这里要跟着改**；`ceg update --check --script` 可随时对照。
+- **调用方式**：一键更新在隐藏窗口跑 `-RunDirectory <更新记录-时间> -ChangedOnly`（UAC 内的日常总检只查这次动过的项）；脚本自己会再查一次版本。两个参数不传时脚本行为不变，桌面图标照常可用。
 - **进度从哪来**：`记录.json` 的 `Timing`、`统一维护\进度.log`、下载中的临时文件大小；剩余时间按最近 5 次 `更新记录-*\记录.json` 每步耗时估（样本不足 3 个取最近一次）。
 - **出错分三层**：网络断、下载不完整、超时 → 「重试这一步」（连续失败 2 次升到第三层）；Claude 在运行、插件要手点、UAC 点了否 → 列成待办；签名不对、防护核验不过、没见过的错 → 「复制给 AI 排查」。
 - **关窗**：更新进行中关窗会先确认；脚本不跟着窗口停，关掉只是看不到进度。
