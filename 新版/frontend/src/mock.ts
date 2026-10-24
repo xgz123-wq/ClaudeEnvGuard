@@ -1,6 +1,7 @@
 // 仅开发预览用（vite dev，不在 Wails 里时）：模拟后端，便于在浏览器里看各种场景。
 // 场景用网址参数切换：?s=real（默认，读 dev/real.json）、?s=fresh（没配好的新电脑）、?s=split（出口不一致）。
-import type { Report, Result, UpdateView } from './types';
+// 记录页：?r=empty 没有记录；默认是一组覆盖四类、各种状态的假记录（按项还原会改这份内存数据）。
+import type { LogRecord, Report, Result, UpdateView } from './types';
 import { updateMock } from './mock-update';
 
 const files = import.meta.glob('../dev/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
@@ -43,6 +44,42 @@ function build(): Report {
   return rep;
 }
 
+const L = 'C:\\Users\\x\\AppData\\Local';
+const records: LogRecord[] = new URLSearchParams(location.search).get('r') === 'empty' ? [] : [
+  { id: 'fix:20261024-101500', kind: 'fix', at: '2026-10-24 10:15', title: 'Claude Code 走专用端口 等 3 项', state: 'restorable', backupId: '20261024-101500', dir: L + '\\ClaudeEnvGuard\\备份\\20261024-101500', meta: '改之前已备份，可以按项还原',
+    diffs: [
+      { itemId: 'cli.proxy', item: 'Claude Code 走专用端口', what: 'HTTPS_PROXY', from: '未设置', to: 'http://127.0.0.1:43865', restorable: true },
+      { itemId: 'cli.proxy', item: 'Claude Code 走专用端口', what: 'HTTP_PROXY', from: '未设置', to: 'http://127.0.0.1:43865', restorable: true },
+      { itemId: 'sys.timezone', item: '系统时区跟随出口', what: '系统时区', from: 'China Standard Time', to: 'Eastern Standard Time', restorable: true },
+      { itemId: 'desktop.policy', item: 'Claude Desktop 走 Desktop 专用端口', what: 'HKLM 策略 egressProxyUrl', from: '没有', to: 'http://127.0.0.1:43867', restorable: true },
+    ] },
+  { id: 'clean:清理-20261024-093000.json', kind: 'clean', at: '2026-10-24 09:30', title: '清理 Claude Code 登录', state: 'irreversible', dir: L + '\\ClaudeEnvGuard\\记录', meta: '已清理 2 项。',
+    diffs: [{ what: '删除', from: '%USERPROFILE%\\.claude\\.credentials.json', to: '已删除' }, { what: '只删登录字段', from: '%USERPROFILE%\\.claude.json', to: '删了 oauthAccount，其他设置保留' }] },
+  { id: 'update:更新记录-20261024-094215', kind: 'update', at: '2026-10-24 09:42', title: 'CLI + 插件 → 2.1.310', state: 'done', dir: L + '\\ClaudeNetworkGuard\\更新记录-20261024-094215', meta: '用时 99.8 秒 · 结果 passed',
+    diffs: [{ what: 'Claude Code CLI', from: '2.1.309', to: '2.1.310' }, { what: '直连防护', from: '旧版本路径', to: '已刷新（4 个指纹，8 条规则）' }] },
+  { id: 'update:更新记录-20261023-052309', kind: 'update', at: '2026-10-23 05:23', title: '失败：安装包审核 失败，退出码 1', state: 'failed', dir: L + '\\ClaudeNetworkGuard\\更新记录-20261023-052309', meta: '用时 61.2 秒 · 结果 failed',
+    diffs: [{ what: '出错步骤', from: '', to: '安装包审核 失败，退出码 1' }] },
+  { id: 'fix:20261015-053351', kind: 'fix', at: '2026-10-15 05:33', title: '区域格式与国家改为 en-US / 美国', state: 'restorable', backupId: '20261015-053351', dir: L + '\\ClaudeEnvGuard\\备份\\20261015-053351', meta: '改之前已备份，可以按项还原',
+    diffs: [{ itemId: 'sys.region', item: '区域格式与国家改为 en-US / 美国', what: '区域格式', from: 'zh-CN', to: 'en-US', restorable: true }, { itemId: 'sys.region', item: '区域格式与国家改为 en-US / 美国', what: '国家或地区', from: 'CN', to: 'US', restorable: true }] },
+  { id: 'restore:20261011-125030:0', kind: 'restore', at: '2026-10-11 12:50', title: '还原「区域格式与国家改为 en-US / 美国」', state: 'restored', dir: L + '\\ClaudeEnvGuard\\备份\\20261011-125030', meta: '按 20261011-125030 里的备份还原，只动选中的项',
+    diffs: [{ itemId: 'sys.region', what: '区域格式', from: 'en-US', to: 'zh-CN' }, { itemId: 'sys.region', what: '国家或地区', from: 'US', to: 'CN' }] },
+  { id: 'fix:20261011-125030', kind: 'fix', at: '2026-10-11 12:50', title: '区域格式与国家改为 en-US / 美国', state: 'restored', backupId: '20261011-125030', dir: L + '\\ClaudeEnvGuard\\备份\\20261011-125030', meta: '改之前已备份，可以按项还原',
+    diffs: [{ itemId: 'sys.region', item: '区域格式与国家改为 en-US / 美国', what: '区域格式', from: 'zh-CN', to: 'en-US', restoredAt: '2026-10-11 12:50:43' }, { itemId: 'sys.region', item: '区域格式与国家改为 en-US / 美国', what: '国家或地区', from: 'CN', to: 'US', restoredAt: '2026-10-11 12:50:43' }] },
+];
+
+function mockRestore(backupId: string, items: string[]) {
+  const r = records.find((x) => x.backupId === backupId);
+  if (!r) return { ok: false, outcomes: [], message: '找不到这次修复的备份' };
+  const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const chosen = (r.diffs ?? []).filter((d) => d.itemId && items.includes(d.itemId) && d.restorable);
+  for (const d of chosen) { d.restorable = false; d.restoredAt = now + ':00'; }
+  const left = (r.diffs ?? []).some((d) => d.restorable);
+  r.state = left ? 'partial' : 'restored';
+  records.unshift({ id: 'restore:' + backupId + ':' + records.length, kind: 'restore', at: now, title: '还原「' + r.title + '」' + (left ? '中的 ' + items.length + ' 项' : ''), state: 'restored', dir: r.dir,
+    meta: '按 ' + backupId + ' 里的备份还原，只动选中的项', diffs: chosen.map((d) => ({ ...d, from: d.to, to: d.from, restorable: false, restoredAt: '' })) });
+  return { ok: true, outcomes: chosen.map((d) => ({ actionId: d.itemId, ok: true, message: '已还原：' + d.what })), message: left ? `已还原 ${items.length} 项，其余保持现状。` : '已全部还原。' };
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const listeners: Record<string, ((d: unknown) => void)[]> = {};
 
@@ -55,7 +92,8 @@ const listeners: Record<string, ((d: unknown) => void)[]> = {};
 (window as any).go = {
   main: {
     App: {
-      Init: async () => ({ version: '2.1.0', logDir: 'C:\\Users\\x\\AppData\\Local\\ClaudeEnvGuard\\日志', settings: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, selectedBrowser: 'KK-Claude', regionOverride: '', sharePackageRoot: '', startUrl: 'https://ip.net.coffee/claude/' }, note: '', regions: [{ id: 'us-west', label: '美国西部（洛杉矶）', countryCode: 'US', iana: 'America/Los_Angeles' }], isAdmin: false, defaults: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, startUrl: 'https://ip.net.coffee/claude/' } }),
+      Init: async () => ({ version: '2.2.0', logDir: L + '\\ClaudeEnvGuard\\日志',
+        paths: { settings: L + '\\ClaudeEnvGuard\\设置.json', backups: L + '\\ClaudeEnvGuard\\备份', logs: L + '\\ClaudeEnvGuard\\日志', records: L + '\\ClaudeEnvGuard\\记录', updates: L + '\\ClaudeNetworkGuard' }, settings: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, selectedBrowser: 'KK-Claude', regionOverride: '', sharePackageRoot: '', startUrl: 'https://ip.net.coffee/claude/' }, note: '', regions: [{ id: 'us-west', label: '美国西部（洛杉矶）', countryCode: 'US', iana: 'America/Los_Angeles' }], isAdmin: false, defaults: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, startUrl: 'https://ip.net.coffee/claude/' } }),
       Check: async () => {
         const full = build();
         const partial = clone(full);
@@ -72,8 +110,11 @@ const listeners: Record<string, ((d: unknown) => void)[]> = {};
       Apply: async (ids: string[]) => { await sleep(900); return { ok: true, backupId: '20261011-120000', message: '完成 ' + ids.length + ' 项。', outcomes: ids.map((id) => ({ actionId: id, ok: true, message: id + '：完成' })) }; },
       Backups: async () => [{ id: '20261011-120000', dir: 'C:\\Users\\x\\AppData\\Local\\ClaudeEnvGuard\\备份\\20261011-120000', createdAt: '2026-10-11 12:00:00', actions: ['区域格式与国家改为 en-US / 美国'], restored: false }],
       Restore: async () => ({ ok: true, message: '已全部还原。', outcomes: [{ ok: true, message: '已还原：region_set en-US' }] }),
+      RestoreItems: async (id: string, items: string[]) => { await sleep(700); return mockRestore(id, items); },
+      Records: async () => JSON.parse(JSON.stringify(records)).sort((a: LogRecord, b: LogRecord) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)),
+      PickDir: async () => 'C:\\Users\\x\\Desktop\\Claude环境分享版',
       CleanPlan: async () => clean,
-      Clean: async () => ({ ok: true, removed: ['x'], errors: [], message: '已清理 1 项。' }),
+      Clean: async () => { await sleep(500); return { ok: true, removed: ['x'], errors: [], message: '已清理 1 项。', logPath: L + '\\ClaudeEnvGuard\\记录\\清理-x.json' }; },
       SaveSettings: async () => '',
       SelectBrowser: async () => '',
       LaunchBrowser: async () => '',

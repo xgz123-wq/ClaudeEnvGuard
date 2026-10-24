@@ -165,6 +165,15 @@ func (a *App) SaveSettings(s appconfig.Settings) string {
 	return ""
 }
 
+// PickDir 弹出选择文件夹对话框（设置页选分享包目录）；取消时返回空串。
+func (a *App) PickDir(title string) string {
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
+	if err != nil {
+		return ""
+	}
+	return dir
+}
+
 // SelectBrowser 记住选中的专用浏览器。
 func (a *App) SelectBrowser(name string) string {
 	s, _ := a.eng.Settings()

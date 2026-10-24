@@ -85,18 +85,26 @@ export interface FixAction {
 export interface FixPlan { target: Target; actions: FixAction[] | null; notes?: string[] }
 export interface StepOutcome { actionId: string; op: string; ok: boolean; message: string }
 export interface ApplyResult { backupId?: string; ok: boolean; outcomes: StepOutcome[] | null; message: string }
-export interface BackupInfo { id: string; dir: string; createdAt: string; actions: string[] | null; restored: boolean }
+export interface BackupItem { id: string; title: string; changes: Change[] | null; needsAdmin?: boolean; ok: boolean; restoredAt?: string }
+export interface BackupInfo { id: string; dir: string; createdAt: string; actions: string[] | null; restored: boolean; items: BackupItem[] | null }
+
+// 「记录」页：修复、还原、更新、清理（Go 端 model.LogRecord）
+export type LogKind = 'fix' | 'restore' | 'update' | 'clean';
+export type LogState = 'restorable' | 'partial' | 'restored' | 'done' | 'failed' | 'irreversible';
+export interface LogDiff { itemId?: string; item?: string; what: string; from: string; to: string; restorable?: boolean; restoredAt?: string }
+export interface LogRecord { id: string; kind: LogKind; at: string; title: string; meta?: string; state: LogState; diffs: LogDiff[] | null; dir?: string; backupId?: string }
 
 export interface CleanItem { path: string; isDir: boolean; bytes: number; files: number; action: string; note?: string }
 export interface CleanPlan { kind: string; title: string; items: CleanItem[] | null; blocked?: string; warning?: string; totalMb: number }
-export interface CleanResult { ok: boolean; removed: string[] | null; errors: string[] | null; backupDir?: string; message: string }
+export interface CleanResult { ok: boolean; removed: string[] | null; errors: string[] | null; backupDir?: string; message: string; logPath?: string }
 
 export interface Settings {
   portCli: number; portBrowser: number; portDesktop: number;
   selectedBrowser: string; regionOverride: string; sharePackageRoot: string; startUrl: string;
 }
 export interface RegionChoice { id: string; label: string; countryCode: string; iana: string }
-export interface InitState { version: string; settings: Settings; note: string; regions: RegionChoice[]; isAdmin: boolean; logDir?: string; defaults: Settings }
+export interface DataPaths { settings: string; backups: string; logs: string; records: string; updates: string }
+export interface InitState { version: string; settings: Settings; note: string; regions: RegionChoice[]; isAdmin: boolean; logDir?: string; defaults: Settings; paths?: DataPaths }
 
 // ---------------------------------------------------------------- 更新页（Go 端 internal/update.View）
 

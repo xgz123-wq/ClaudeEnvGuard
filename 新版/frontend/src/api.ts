@@ -2,7 +2,7 @@
 import * as App from '../wailsjs/go/main/App';
 import { EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
 import type {
-  ApplyResult, BackupInfo, CleanPlan, CleanResult, FixPlan, InitState, Report, Settings, UpdateView,
+  ApplyResult, BackupInfo, CleanPlan, CleanResult, FixPlan, InitState, LogRecord, Report, Settings, UpdateView,
 } from './types';
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -27,6 +27,16 @@ export const api = {
       return { ok: false, outcomes: [], message: '还原调用失败：' + errText(e) };
     }
   },
+  // 按项还原：只还原勾选的动作 id，其余保持现状
+  restoreItems: async (id: string, items: string[]): Promise<ApplyResult> => {
+    try {
+      return (await App.RestoreItems(id, items)) as unknown as ApplyResult;
+    } catch (e) {
+      return { ok: false, outcomes: [], message: '还原调用失败：' + errText(e) };
+    }
+  },
+  records: async (): Promise<LogRecord[]> => ((await App.Records()) as unknown as LogRecord[]) ?? [],
+  pickDir: (title: string) => App.PickDir(title) as Promise<string>,
   cleanPlan: (kind: string) => App.CleanPlan(kind) as unknown as Promise<CleanPlan>,
   clean: async (kind: string, paths: string[]): Promise<CleanResult> => {
     try {

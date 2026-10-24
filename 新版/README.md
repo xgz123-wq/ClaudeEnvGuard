@@ -9,10 +9,11 @@
 | 场景 | 做法 |
 |---|---|
 | 日常体检 | 双击桌面「Claude 环境卫士」，打开即自动检查，约 5 秒出完整结果 |
-| 有没配好的项 | 点结论卡片里的「一键修复」，看清每一处改动后勾选执行；需要管理员的项只弹一次 UAC |
-| 修错了 / 想撤销 | 右上角「⋯ → 还原修复…」，选一次修复整次撤销 |
+| 有没配好的项 | 点结论区的「一键修复」，计划直接在下方明细区展开，看清每一处改动后勾选执行；需要管理员的项只弹一次 UAC；修完 10 秒内可点「撤销这次修复」 |
+| 修错了 / 想撤销 | 顶栏「记录」页：选一次修复，只勾想撤回的项，点「还原勾选的 N 项」，没勾的保持现状 |
 | 更新 Claude 三端 | 切到「更新」页：打开卫士、体检完成后自动查一次版本；有更新时先退出全部 Claude，再点「一键更新」（要动防护时弹一次 UAC，那就是确认）。和桌面「Claude-三端更新」调同一个脚本、记录放同一个目录，见下面「更新页」 |
-| 换账号 / 重新登录 | 在对应页签点「清理登录…」，先列清单、确认后才删 |
+| 换账号 / 重新登录 | 选「专用浏览器 / Claude Code / Claude Desktop」卡片，点明细区上方的「清理登录…」，先列清单、勾「我核对过」才删；删了什么记进「记录」页 |
+| 改端口、目标地区、起始网址 | 顶栏「⚙ 设置」：保存后自动重新检查；「数据放在哪」每个位置都能直接打开 |
 | 命令行或给 AI 用 | `ceg check`、`ceg fix --plan`，见下表 |
 
 - **首次运行**：exe 没有代码签名，Windows SmartScreen 可能提示「已保护你的电脑」，点「更多信息 → 仍要运行」。
@@ -26,7 +27,9 @@
 | `ceg fix --plan [--json] [--alias 名字]` | 只列修复计划，不改任何东西 |
 | `ceg fix --apply --items default` | 执行计划里默认勾选的修复（先备份） |
 | `ceg fix --apply --items sys.timezone,cli.proxy` | 执行指定修复 |
-| `ceg restore [--list] [--id 备份编号]` | 还原某次修复，不带 `--id` 还原最近一次 |
+| `ceg restore [--list] [--id 备份编号]` | 还原某次修复，不带 `--id` 还原最近一次；`--list` 列出每次修复里的每一项（动作 id）和还原状态 |
+| `ceg restore --id 备份编号 --items sys.timezone` | 按项还原：只还原列出的动作，其余保持现状 |
+| `ceg records [--json]` | 只读：列出「记录」页的修复、还原、更新、清理 |
 | `ceg clean code\|desktop\|browser --plan` / `--yes` | 清理登录数据：先看清单，再确认执行 |
 | `ceg update --check [--json]` | 只读：查三端版本、4 个程序指纹和这次会做什么 |
 | `ceg update --apply` | 一键更新（同桌面「Claude-三端更新」）；先退出全部 Claude |
@@ -77,7 +80,8 @@
 - **网络探测**：每个请求都显式指定走哪个端口，忽略进程环境里的 `HTTPS_PROXY`；Claude 域名只经专用端口访问。
 - **修复**：每个动作要么全部完成，要么自动撤回；每步执行前把旧值或旧文件存进备份；`settings.json` 格式损坏时拒绝改写。
 - **提权**：需要管理员的动作交给同一个 exe 的提权子进程执行，请求文件只接受本工具备份目录，且每一步都要通过白名单校验（只允许改 Claude 策略、时区、IPv6、指定环境变量、指定防火墙规则）。
-- **清理**：只删白名单内的登录和缓存数据；目标程序在运行时拒绝；执行前重新确认进程状态；登录凭据不留备份。
+- **清理**：只删白名单内的登录和缓存数据；目标程序在运行时拒绝；执行前重新确认进程状态；登录凭据不留备份。每次清理写一份留痕（删了哪些路径、`.claude.json` 删了哪些字段名），不含凭据内容。
+- **按项还原**：每次修复的 `manifest.json` 记下每个动作的标题和改动（v2.2.0 起），每条改动记还原时间；只还原选中的动作，需要管理员的部分照样只弹一次 UAC，提权进程只动选中的项。v2.2.0 之前的备份按备份记录现场拼出逐项清单，同样能还原。
 
 ## 更新页（v2.1.0 起）
 
@@ -88,6 +92,15 @@
 - **关窗**：更新进行中关窗会先确认；脚本不跟着窗口停，关掉只是看不到进度。
 - **回退**：见 [更新并入需求.md](../更新并入需求.md) 第 2.1 节；删掉 `internal/update`、`frontend/src/update.*` 和顶栏「更新」页签，其余功能不受影响。
 
+## 界面结构（v2.2.0 起，照 [原型](../原型/Main.dc.html)）
+
+| 位置 | 内容 |
+|---|---|
+| 顶栏 | 「体检 / 更新 / 记录」三个页签（带角标）；右边上次检查时间、⚙ 设置（单独一页）、⋯（离线检查、复制报告、打开日志目录） |
+| 体检页 | 结论区（一句结论 + 唯一主按钮 + 「随 IP 项按：… 改」）＋ 线路图（检查时连线流动，点它看 P1–P5）＋ 6 张卡片（需要处理 / 线路 / 专用浏览器 / Claude Code / Desktop / 系统）＋ 选中卡片的明细（有问题的排前面，通过的收成一行）；一键修复计划、清理登录清单都在明细区展开 |
+| 记录页 | 左边按时间列出修复、还原、更新、清理（可筛），右边「改了什么：改之前 → 改之后」；修复记录逐项勾选还原；更新写明不能回退，清理写明不可恢复 |
+| 设置页 | 三个端口、目标地区、默认专用浏览器与起始网址（默认 `https://ip.net.coffee/claude/`）、分享包目录、数据位置（各带「打开」）、版本与命令行用法 |
+
 ## 数据位置
 
 | 内容 | 位置 |
@@ -95,6 +108,7 @@
 | 设置 | `%LOCALAPPDATA%\ClaudeEnvGuard\设置.json` |
 | 修复备份 | `%LOCALAPPDATA%\ClaudeEnvGuard\备份\<时间>\`（`manifest.json` + 原文件副本） |
 | 运行日志 | `%LOCALAPPDATA%\ClaudeEnvGuard\日志\yyyyMMdd.log`，保留 7 天 |
+| 清理留痕 | `%LOCALAPPDATA%\ClaudeEnvGuard\记录\清理-<时间>.json`（路径和字段名，不含凭据） |
 | 查版本记录 | `%LOCALAPPDATA%\ClaudeEnvGuard\更新检查\检查记录.json`，每次覆盖 |
 | 更新记录 | `%LOCALAPPDATA%\ClaudeNetworkGuard\更新记录-<时间>\`（脚本写，和桌面图标共用） |
 | 界面缓存 | `%APPDATA%\ClaudeEnvGuard.exe\`（WebView2） |
@@ -106,10 +120,10 @@
 | 测试 + 打包 | `pwsh -File 打包.ps1`（加 `-Deploy` 复制到上一级目录） |
 | 只跑测试 | `go test ./...` |
 | 真机只读测速 | `$env:CEG_REAL=1; go test ./internal/facts -run TestReal -v` |
-| 界面预览（模拟数据） | `cd frontend; npm run dev`，地址加 `?s=real` / `?s=fresh` / `?s=split` 切换体检场景，`?u=update` / `cli` / `blocked` / `latest` / `neterr` / `fail` / `checkfail` / `unsafe` / `never` 切换更新页场景（`dev/*.json` 由 `ceg check --json` 生成，不入库） |
+| 界面预览（模拟数据） | `cd frontend; npm run dev`，地址加 `?s=real` / `?s=fresh` / `?s=split` 切换体检场景，`?r=empty` 看空的记录页，`?u=update` / `cli` / `blocked` / `latest` / `neterr` / `fail` / `checkfail` / `unsafe` / `never` 切换更新页场景（`dev/*.json` 由 `ceg check --json` 生成，不入库） |
 
 - **开发规范**（分支、版本号、上线步骤）：见上级目录 [README.md](../README.md)。
-- **结构**：`internal/facts` 收集现场（只读）→ `internal/checks` 纯函数判定 → `internal/fixes` 计划/执行/还原 → `internal/engine` 串起来；`internal/update` 是更新页（只调三端更新脚本、读它写的记录）；`app.go` + `frontend/` 是界面，`cmd/ceg` 是命令行。所有系统调用都在 `internal/platform` 的 `OS` 接口后面，测试用 `Fake`。
+- **结构**：`internal/facts` 收集现场（只读）→ `internal/checks` 纯函数判定 → `internal/fixes` 计划/执行/还原 → `internal/engine` 串起来；`internal/update` 是更新页（只调三端更新脚本、读它写的记录）；`internal/records` 汇总记录页（只读）；`app.go` + `frontend/` 是界面（`check.ts`、`update.ts`、`records.ts`、`settings.ts` 各管一页，`ctx.ts` 是页间共享状态），`cmd/ceg` 是命令行。所有系统调用都在 `internal/platform` 的 `OS` 接口后面，测试用 `Fake`。
 - **工具链**：Go 1.27（`%LOCALAPPDATA%\Programs\go`）、Wails v2.14、Node 24。不要用 conda 的 python，也不需要 Python。
 
 ## 已知限制
