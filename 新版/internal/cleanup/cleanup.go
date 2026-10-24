@@ -3,6 +3,7 @@
 package cleanup
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"ClaudeEnvGuard/internal/appconfig"
 	"ClaudeEnvGuard/internal/facts"
@@ -218,19 +220,21 @@ func Execute(sys platform.OS, plan model.CleanPlan, f *facts.Facts) model.CleanR
 		res.Message = "没有执行：" + fresh.Blocked
 		return res
 	}
+	lg := Log{Kind: plan.Kind, Title: plan.Title, At: time.Now().Format("2006-01-02 15:04:05")}
 	for _, it := range plan.Items {
 		if !allowed(sys, plan.Kind, f, it.Path) {
 			res.Errors = append(res.Errors, "不在允许范围内，跳过："+it.Path)
 			continue
 		}
 		if it.Action == "edit" {
-			dir, err := editClaudeJSON(sys, it.Path)
+			dir, fields, err := editClaudeJSON(sys, it.Path)
 			if err != nil {
 				res.Errors = append(res.Errors, it.Path+"："+err.Error())
 				continue
 			}
 			res.BackupDir = dir
 			res.Removed = append(res.Removed, it.Path+"（已删登录字段）")
+			lg.Edited = append(lg.Edited, Edit{Path: it.Path, Fields: fields})
 			continue
 		}
 		if err := os.RemoveAll(it.Path); err != nil {
@@ -238,6 +242,7 @@ func Execute(sys platform.OS, plan model.CleanPlan, f *facts.Facts) model.CleanR
 			continue
 		}
 		res.Removed = append(res.Removed, it.Path)
+		lg.Deleted = append(lg.Deleted, Deleted{Path: it.Path, IsDir: it.IsDir, Bytes: it.Bytes, Files: it.Files})
 	}
 	res.OK = len(res.Errors) == 0
 	if res.OK {
@@ -245,7 +250,87 @@ func Execute(sys platform.OS, plan model.CleanPlan, f *facts.Facts) model.CleanR
 	} else {
 		res.Message = fmt.Sprintf("清理了 %d 项，%d 项失败。", len(res.Removed), len(res.Errors))
 	}
+	lg.Errors, lg.Message = res.Errors, res.Message
+	if len(lg.Deleted)+len(lg.Edited)+len(lg.Errors) > 0 {
+		if p, err := writeLog(sys.Paths().LocalAppData, lg); err == nil {
+			res.LogPath = p
+		} else {
+			res.Message += "（留痕没写成：" + err.Error() + "）"
+		}
+	}
 	return res
+}
+
+// ---------------------------------------------------------------- 留痕
+
+// Log 是一次清理的留痕，写在 %LOCALAPPDATA%\ClaudeEnvGuard\记录\清理-<时间>.json。
+// 只记删了哪些路径、改了哪些字段名，不含任何凭据内容：删了的东西本来就找不回，留痕是为了知道动过什么。
+type Log struct {
+	Kind    string    `json:"kind"`
+	Title   string    `json:"title"`
+	At      string    `json:"at"`
+	Deleted []Deleted `json:"deleted"`
+	Edited  []Edit    `json:"edited"`
+	Errors  []string  `json:"errors"`
+	Message string    `json:"message"`
+}
+
+// Deleted 是删掉的一个文件或目录。
+type Deleted struct {
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
+	Bytes int64  `json:"bytes"`
+	Files int    `json:"files"`
+}
+
+// Edit 是只删了部分字段的文件（~/.claude.json）。
+type Edit struct {
+	Path   string   `json:"path"`
+	Fields []string `json:"fields"`
+}
+
+// LogDir 是记录目录。
+func LogDir(localAppData string) string {
+	return filepath.Join(appconfig.Dir(localAppData), "记录")
+}
+
+func writeLog(localAppData string, lg Log) (string, error) {
+	base := filepath.Join(LogDir(localAppData), "清理-"+time.Now().Format("20060102-150405"))
+	p := base + ".json"
+	for i := 1; i < 50; i++ {
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			break
+		}
+		p = fmt.Sprintf("%s-%d.json", base, i)
+	}
+	b, _ := json.MarshalIndent(lg, "", "  ")
+	return p, appconfig.WriteFileAtomic(p, b)
+}
+
+// ListLogs 读所有清理留痕，新的在前；读不了的文件跳过。
+func ListLogs(localAppData string) []LogFile {
+	dir := LogDir(localAppData)
+	matches, _ := filepath.Glob(filepath.Join(dir, "清理-*.json"))
+	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
+	var out []LogFile
+	for _, m := range matches {
+		b, err := os.ReadFile(m)
+		if err != nil {
+			continue
+		}
+		var lg Log
+		if jsonx.Unmarshal(b, &lg) != nil {
+			continue
+		}
+		out = append(out, LogFile{Path: m, Log: lg})
+	}
+	return out
+}
+
+// LogFile 是一份留痕和它的路径。
+type LogFile struct {
+	Path string
+	Log
 }
 
 func friendly(err error) string {
@@ -259,18 +344,22 @@ func friendly(err error) string {
 	return s
 }
 
-// editClaudeJSON 只删登录字段，其余内容（键顺序、数字精度）原样保留；先写临时文件再替换，避免写坏。
-func editClaudeJSON(sys platform.OS, path string) (string, error) {
+// editClaudeJSON 只删登录字段，其余内容（键顺序、数字精度）原样保留；先写临时文件再替换，避免写坏。返回删掉的字段名。
+func editClaudeJSON(sys platform.OS, path string) (string, []string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	obj, err := jsonx.ParseObject(b)
 	if err != nil {
-		return "", fmt.Errorf("格式有误，没有修改：%w", err)
+		return "", nil, fmt.Errorf("格式有误，没有修改：%w", err)
 	}
+	var fields []string
 	for _, k := range codeAuthKeys {
+		if _, ok := obj.Get(k); ok {
+			fields = append(fields, k)
+		}
 		obj.Delete(k)
 	}
-	return "", appconfig.WriteFileAtomic(path, obj.Marshal())
+	return "", fields, appconfig.WriteFileAtomic(path, obj.Marshal())
 }

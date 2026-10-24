@@ -243,11 +243,32 @@ type ApplyResult struct {
 
 // BackupInfo 是一次可还原的修复备份。
 type BackupInfo struct {
-	ID        string   `json:"id"`
-	Dir       string   `json:"dir"`
-	CreatedAt string   `json:"createdAt"`
-	Actions   []string `json:"actions"`
-	Restored  bool     `json:"restored"`
+	ID         string         `json:"id"`
+	Dir        string         `json:"dir"`
+	CreatedAt  string         `json:"createdAt"`
+	Actions    []string       `json:"actions"`
+	Restored   bool           `json:"restored"`
+	RestoredAt string         `json:"restoredAt,omitempty"`
+	Items      []BackupItem   `json:"items"`
+	Restores   []RestoreEvent `json:"restores,omitempty"`
+}
+
+// BackupItem 是一次修复里的一个动作，按项还原的最小单位。
+type BackupItem struct {
+	ID         string   `json:"id"`
+	Title      string   `json:"title"`
+	Changes    []Change `json:"changes"`
+	NeedsAdmin bool     `json:"needsAdmin,omitempty"`
+	OK         bool     `json:"ok"`                   // 当时改成功了；失败的动作已自动撤回，不能再还原
+	RestoredAt string   `json:"restoredAt,omitempty"` // 非空表示这一项已经还原
+}
+
+// RestoreEvent 是对某次修复做过的一次还原（整次或按项）。
+type RestoreEvent struct {
+	At      string   `json:"at"`
+	Items   []string `json:"items"` // 这次还原的动作 id
+	OK      bool     `json:"ok"`
+	Message string   `json:"message,omitempty"`
 }
 
 // CleanItem 是清理清单中的一项。
@@ -277,4 +298,29 @@ type CleanResult struct {
 	Errors    []string `json:"errors"`
 	BackupDir string   `json:"backupDir,omitempty"`
 	Message   string   `json:"message"`
+	LogPath   string   `json:"logPath,omitempty"` // 留痕文件：记录\清理-<时间>.json
+}
+
+// LogRecord 是「记录」页的一条：修复、还原、更新、清理。
+type LogRecord struct {
+	ID       string    `json:"id"`
+	Kind     string    `json:"kind"` // fix / restore / update / clean
+	At       string    `json:"at"`   // 2006-01-02 15:04
+	Title    string    `json:"title"`
+	Meta     string    `json:"meta,omitempty"`
+	State    string    `json:"state"` // restorable / partial / restored / done / failed / irreversible
+	Diffs    []LogDiff `json:"diffs"`
+	Dir      string    `json:"dir,omitempty"`
+	BackupID string    `json:"backupId,omitempty"` // 修复记录：按项还原时传回
+}
+
+// LogDiff 是记录里「改了什么：改之前 → 改之后」的一行。
+type LogDiff struct {
+	ItemID     string `json:"itemId,omitempty"` // 修复记录：所属动作 id，按项还原用
+	Item       string `json:"item,omitempty"`   // 修复记录：所属动作的标题，一个动作可能改好几处
+	What       string `json:"what"`
+	From       string `json:"from"`
+	To         string `json:"to"`
+	Restorable bool   `json:"restorable,omitempty"`
+	RestoredAt string `json:"restoredAt,omitempty"`
 }

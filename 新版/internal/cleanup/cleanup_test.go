@@ -141,3 +141,43 @@ func TestUnknownKind(t *testing.T) {
 		t.Errorf("未知类型应拒绝")
 	}
 }
+
+// 清理留痕：记下删了哪些路径、改了哪些字段，不含凭据内容；被拦下没执行时不写。
+func TestCleanLeavesLog(t *testing.T) {
+	fk := platform.NewFake(t.TempDir())
+	dir := filepath.Join(fk.P.Home, ".claude")
+	write(t, filepath.Join(dir, ".credentials.json"), `{"claudeAiOauth":{"accessToken":"sk-ant-oat-SECRET"}}`)
+	cj := filepath.Join(fk.P.Home, ".claude.json")
+	write(t, cj, `{"numStartups": 3, "oauthAccount": {"emailAddress": "who@example.com"}}`)
+	f := &facts.Facts{}
+
+	blocked := Plan(fk, KindCode, &facts.Facts{CLIRunning: 1})
+	if r := Execute(fk, blocked, f); r.LogPath != "" || len(ListLogs(fk.P.LocalAppData)) != 0 {
+		t.Fatalf("没执行时不应留痕：%+v", r)
+	}
+
+	res := Execute(fk, Plan(fk, KindCode, f), f)
+	if !res.OK || res.LogPath == "" {
+		t.Fatalf("应写留痕：%+v", res)
+	}
+	if filepath.Dir(res.LogPath) != LogDir(fk.P.LocalAppData) || !strings.HasPrefix(filepath.Base(res.LogPath), "清理-") {
+		t.Errorf("留痕位置不对：%s", res.LogPath)
+	}
+	raw, _ := os.ReadFile(res.LogPath)
+	for _, secret := range []string{"sk-ant-oat-SECRET", "who@example.com", "claudeAiOauth"} {
+		if strings.Contains(string(raw), secret) {
+			t.Errorf("留痕不应含凭据内容 %q：\n%s", secret, raw)
+		}
+	}
+	logs := ListLogs(fk.P.LocalAppData)
+	if len(logs) != 1 {
+		t.Fatalf("应读到 1 份留痕：%+v", logs)
+	}
+	lg := logs[0]
+	if lg.Kind != KindCode || len(lg.Deleted) != 1 || filepath.Base(lg.Deleted[0].Path) != ".credentials.json" {
+		t.Errorf("删除项不对：%+v", lg.Deleted)
+	}
+	if len(lg.Edited) != 1 || lg.Edited[0].Path != cj || strings.Join(lg.Edited[0].Fields, ",") != "oauthAccount" {
+		t.Errorf("改动字段不对：%+v", lg.Edited)
+	}
+}

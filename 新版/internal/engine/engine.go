@@ -4,6 +4,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"ClaudeEnvGuard/internal/logx"
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/platform"
+	"ClaudeEnvGuard/internal/records"
 )
 
 // NetworkBudget 是联网阶段的总时长上限。
@@ -199,12 +201,23 @@ func (e *Engine) Backups() []model.BackupInfo {
 	return fixes.ListBackups(e.Sys.Paths().LocalAppData)
 }
 
-// Restore 还原某次修复。
+// Restore 整次还原某次修复。
 func (e *Engine) Restore(id string) model.ApplyResult {
-	logx.Printf("还原开始：%s", id)
-	res := fixes.Restore(e.Sys, id, e.SelfExe)
+	return e.RestoreItems(id, nil)
+}
+
+// RestoreItems 只还原某次修复里的指定动作；items 为空 = 整次。
+func (e *Engine) RestoreItems(id string, items []string) model.ApplyResult {
+	logx.Printf("还原开始：%s 项=%v", id, items)
+	res := fixes.RestoreItems(e.Sys, id, items, e.SelfExe)
 	logOutcomes("还原", res)
 	return res
+}
+
+// Records 是「记录」页的全部条目：修复、还原、更新、清理。
+func (e *Engine) Records() []model.LogRecord {
+	la := e.Sys.Paths().LocalAppData
+	return records.List(la, filepath.Join(la, "ClaudeNetworkGuard"))
 }
 
 // localFacts 清理前需要最新的进程和浏览器状态；没检查过就现场读一次本地事实。

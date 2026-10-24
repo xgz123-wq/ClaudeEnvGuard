@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"ClaudeEnvGuard/internal/appconfig"
+	"ClaudeEnvGuard/internal/cleanup"
 	"ClaudeEnvGuard/internal/engine"
 	"ClaudeEnvGuard/internal/fixes"
 	"ClaudeEnvGuard/internal/geo"
@@ -47,12 +49,25 @@ type InitState struct {
 	IsAdmin  bool               `json:"isAdmin"`
 	LogDir   string             `json:"logDir"`
 	Defaults appconfig.Settings `json:"defaults"`
+	Paths    DataPaths          `json:"paths"`
+}
+
+// DataPaths 是设置页「数据放在哪」的各个位置。
+type DataPaths struct {
+	Settings string `json:"settings"`
+	Backups  string `json:"backups"`
+	Logs     string `json:"logs"`
+	Records  string `json:"records"` // 清理留痕
+	Updates  string `json:"updates"` // 三端更新脚本的 更新记录-* 所在目录
 }
 
 // Init 返回版本、设置和可选地区。
 func (a *App) Init() InitState {
 	s, note := a.eng.Settings()
-	return InitState{Version: version.Version, Settings: s, Note: note, Regions: geo.Choices, IsAdmin: a.eng.Sys.IsAdmin(), LogDir: logx.Dir(), Defaults: appconfig.Defaults()}
+	la := a.eng.Sys.Paths().LocalAppData
+	paths := DataPaths{Settings: filepath.Join(appconfig.Dir(la), "设置.json"), Backups: fixes.BackupRoot(la), Logs: logx.Dir(),
+		Records: cleanup.LogDir(la), Updates: filepath.Join(la, "ClaudeNetworkGuard")}
+	return InitState{Version: version.Version, Settings: s, Note: note, Regions: geo.Choices, IsAdmin: a.eng.Sys.IsAdmin(), LogDir: logx.Dir(), Defaults: appconfig.Defaults(), Paths: paths}
 }
 
 // Check 跑一次检查。本地阶段完成后通过事件 "report" 推送一份未完成报告，最终结果作为返回值。
@@ -114,6 +129,19 @@ func (a *App) Backups() []model.BackupInfo {
 // Restore 还原一次修复。
 func (a *App) Restore(id string) model.ApplyResult {
 	return a.eng.Restore(id)
+}
+
+// RestoreItems 只还原一次修复里勾选的项（动作 id）；其余保持现状。
+func (a *App) RestoreItems(id string, items []string) model.ApplyResult {
+	if len(items) == 0 {
+		return model.ApplyResult{Message: "没有勾选要还原的项。"}
+	}
+	return a.eng.RestoreItems(id, items)
+}
+
+// Records 是「记录」页的全部条目。
+func (a *App) Records() []model.LogRecord {
+	return a.eng.Records()
 }
 
 // CleanPlan 列出清理清单。

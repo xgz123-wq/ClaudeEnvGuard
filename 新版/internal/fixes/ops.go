@@ -21,13 +21,14 @@ import (
 
 // Record 是一步改动的备份记录，还原时按它恢复。
 type Record struct {
-	ActionID string            `json:"actionId"`
-	Op       string            `json:"op"`
-	Params   map[string]string `json:"params"`
-	Before   map[string]string `json:"before"`
-	Applied  bool              `json:"applied"`
-	Message  string            `json:"message,omitempty"`
-	Restored bool              `json:"restored,omitempty"`
+	ActionID   string            `json:"actionId"`
+	Op         string            `json:"op"`
+	Params     map[string]string `json:"params"`
+	Before     map[string]string `json:"before"`
+	Applied    bool              `json:"applied"`
+	Message    string            `json:"message,omitempty"`
+	Restored   bool              `json:"restored,omitempty"`
+	RestoredAt string            `json:"restoredAt,omitempty"` // v2.2 起：这条改动的还原时间
 }
 
 // Executor 执行原子操作并记录备份。

@@ -409,3 +409,155 @@ func TestPlanBrowserCreate(t *testing.T) {
 		t.Errorf("默认名字冲突应加序号：%s", p.Actions[0].Title)
 	}
 }
+
+// 按项还原：只还原勾选的项，其余不变；再还原剩下的，整次标记已还原。
+func TestRestoreItemsPartialThenRest(t *testing.T) {
+	fk := newFake(t)
+	fk.Admin = true
+	settings := filepath.Join(fk.P.Home, ".claude", "settings.json")
+	write(t, settings, origSettings)
+	fk.SetReg(platform.HKCU, facts.KeyUserEnv, "ANTHROPIC_AUTH_TOKEN", platform.RegValue{Type: "sz", Str: "sk-secret"})
+	fk.SetReg(platform.HKLM, facts.KeyTZ, "TimeZoneKeyName", platform.RegValue{Type: "sz", Str: "China Standard Time"})
+	var runs []string
+	fk.RunFunc = func(name string, args ...string) (string, int, error) {
+		runs = append(runs, filepath.Base(name)+" "+strings.Join(args, " "))
+		return "", 0, nil
+	}
+	plan := model.FixPlan{Actions: []model.FixAction{
+		{ID: "a1", Title: "代理", Changes: []model.Change{{What: "HTTPS_PROXY", From: "未设置", To: "http://127.0.0.1:43865"}},
+			Steps: []model.Step{jsonEnvStep(settings, map[string]string{"HTTPS_PROXY": "http://127.0.0.1:43865"}, nil)}},
+		{ID: "a3", Title: "变量", Steps: []model.Step{step("reg_delete", "root", "HKCU", "key", facts.KeyUserEnv, "name", "ANTHROPIC_AUTH_TOKEN")}},
+		{ID: "a4", Title: "时区", Changes: []model.Change{{What: "系统时区", From: "China Standard Time", To: "Eastern Standard Time"}},
+			Steps: []model.Step{step("tz_set", "id", "Eastern Standard Time")}},
+	}}
+	res := Apply(fk, plan, []string{"a1", "a3", "a4"}, "self.exe")
+	if !res.OK {
+		t.Fatalf("执行失败：%+v", res)
+	}
+	modified := readFile(t, settings)
+	b := ListBackups(fk.P.LocalAppData)[0]
+	if len(b.Items) != 3 || !b.Items[0].OK || b.Items[0].Changes[0].What != "HTTPS_PROXY" || b.Items[0].RestoredAt != "" {
+		t.Fatalf("备份应带逐项清单：%+v", b.Items)
+	}
+
+	// 只还原时区
+	rr := RestoreItems(fk, res.BackupID, []string{"a4"}, "self.exe")
+	if !rr.OK || !strings.Contains(rr.Message, "已还原 1 项") {
+		t.Fatalf("按项还原失败：%+v", rr)
+	}
+	if runs[len(runs)-1] != "tzutil.exe /s China Standard Time" {
+		t.Errorf("时区没还原：%v", runs)
+	}
+	if readFile(t, settings) != modified {
+		t.Errorf("没勾的 settings.json 不应被还原")
+	}
+	if v, _ := fk.RegRead(platform.HKCU, facts.KeyUserEnv, "ANTHROPIC_AUTH_TOKEN"); v.Exists {
+		t.Errorf("没勾的用户变量不应被还原")
+	}
+	b = ListBackups(fk.P.LocalAppData)[0]
+	if b.Restored || b.Items[2].RestoredAt == "" || b.Items[0].RestoredAt != "" || b.Items[1].RestoredAt != "" {
+		t.Fatalf("只有时区应标记已还原：%+v", b)
+	}
+	if len(b.Restores) != 1 || len(b.Restores[0].Items) != 1 || b.Restores[0].Items[0] != "a4" {
+		t.Errorf("应记下这次按项还原：%+v", b.Restores)
+	}
+
+	// 再还原剩下的：时区不再动
+	nRuns := len(runs)
+	rr = RestoreItems(fk, res.BackupID, nil, "self.exe")
+	if !rr.OK || rr.Message != "已全部还原。" {
+		t.Fatalf("还原剩下的失败：%+v", rr)
+	}
+	if len(runs) != nRuns {
+		t.Errorf("已还原的时区不应再执行：%v", runs[nRuns:])
+	}
+	if readFile(t, settings) != origSettings {
+		t.Errorf("settings.json 没有逐字节还原")
+	}
+	if v, _ := fk.RegRead(platform.HKCU, facts.KeyUserEnv, "ANTHROPIC_AUTH_TOKEN"); !v.Exists || v.Str != "sk-secret" {
+		t.Errorf("用户变量没还原：%+v", v)
+	}
+	b = ListBackups(fk.P.LocalAppData)[0]
+	if !b.Restored || len(b.Restores) != 2 {
+		t.Errorf("全部还原后应整次标记：%+v", b)
+	}
+	for _, it := range b.Items {
+		if it.RestoredAt == "" {
+			t.Errorf("每项都应有还原时间：%+v", it)
+		}
+	}
+	if r := RestoreItems(fk, res.BackupID, []string{"nope"}, ""); r.OK || !strings.Contains(r.Message, "没有") {
+		t.Errorf("不存在的项应拒绝：%+v", r)
+	}
+}
+
+// 按项还原跨管理员部分：只还原普通项时不弹 UAC；还原管理员项时提权进程只动选中的项。
+func TestRestoreItemsElevated(t *testing.T) {
+	fk := newFake(t)
+	elevations := 0
+	fk.ElevateFunc = func(exe string, args []string) (int, error) {
+		elevations++
+		code, ok := HandleElevatedArgs(fk, args)
+		if !ok {
+			t.Fatalf("提权参数没被识别：%v", args)
+		}
+		return code, nil
+	}
+	settings := filepath.Join(fk.P.Home, ".claude", "settings.json")
+	f := &facts.Facts{Settings: appconfig.Defaults()}
+	plan := model.FixPlan{Actions: []model.FixAction{
+		*planDesktopPolicy(f),
+		{ID: "u", Title: "普通", Steps: []model.Step{jsonEnvStep(settings, map[string]string{"HTTP_PROXY": "x"}, nil)}},
+	}}
+	res := Apply(fk, plan, []string{checks.FixDesktopPolicy, "u"}, "self.exe")
+	if !res.OK || elevations != 1 {
+		t.Fatalf("执行失败：%+v", res)
+	}
+	rr := RestoreItems(fk, res.BackupID, []string{"u"}, "self.exe")
+	if !rr.OK || elevations != 1 {
+		t.Fatalf("只还原普通项不应提权：%+v（提权 %d 次）", rr, elevations)
+	}
+	if facts.Exists(settings) {
+		t.Errorf("普通项应已还原")
+	}
+	if v, _ := fk.RegRead(platform.HKLM, facts.KeyPolicy, "egressProxyUrl"); !v.Exists {
+		t.Errorf("没勾的策略不应被还原")
+	}
+	rr = RestoreItems(fk, res.BackupID, []string{checks.FixDesktopPolicy}, "self.exe")
+	if !rr.OK || elevations != 2 {
+		t.Fatalf("还原管理员项失败：%+v", rr)
+	}
+	if v, _ := fk.RegRead(platform.HKLM, facts.KeyPolicy, "egressProxyUrl"); v.Exists {
+		t.Errorf("策略应已还原")
+	}
+	if b := ListBackups(fk.P.LocalAppData)[0]; !b.Restored {
+		t.Errorf("两项都还原后应整次标记：%+v", b)
+	}
+	if facts.Exists(filepath.Join(BackupRoot(fk.P.LocalAppData), res.BackupID, requestRestore)) {
+		t.Errorf("还原请求文件用完应删除")
+	}
+}
+
+// v2.2 之前的备份没有逐项清单：按备份记录拼出来，区域格式显示成能看懂的一行。
+func TestOldManifestItems(t *testing.T) {
+	m := Manifest{Actions: []string{"区域格式与国家改为 en-US / 美国"}, Records: []Record{{ActionID: "sys.region", Op: "region_set",
+		Params: map[string]string{"cc": "US", "locale": "en-US"}, Before: map[string]string{"locale": "zh-CN", "nation": "45"}, Applied: true}}}
+	items := itemsOf(m, Manifest{})
+	if len(items) != 1 || items[0].Title != "区域格式与国家改为 en-US / 美国" || !items[0].OK || items[0].RestoredAt != "" {
+		t.Fatalf("旧备份逐项清单不对：%+v", items)
+	}
+	if c := items[0].Changes; len(c) != 2 || c[0].From != "zh-CN" || c[1].From != "CN" || c[1].To != "US" {
+		t.Errorf("区域格式改动描述不对：%+v", c)
+	}
+	m.Records[0].Restored, m.RestoredAt = true, "2026-10-11 12:50:43"
+	if items := itemsOf(m, Manifest{}); items[0].RestoredAt != "2026-10-11 12:50:43" {
+		t.Errorf("已还原的旧备份应带还原时间：%+v", items)
+	}
+	// 令牌这类值不显示
+	r := Record{Op: "reg_delete", Params: map[string]string{"name": "ANTHROPIC_AUTH_TOKEN"}, Before: map[string]string{"existed": "true", "value": "sk-secret"}, Applied: true}
+	for _, c := range describeRecord(r) {
+		if strings.Contains(c.From+c.To, "sk-secret") {
+			t.Errorf("不应显示原值：%+v", c)
+		}
+	}
+}

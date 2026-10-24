@@ -34,8 +34,10 @@ const usage = `Claude 环境卫士（命令行版） v%s
       只列出修复计划，不改任何东西。
   ceg fix     --apply --items default|全部ID用逗号分隔 [--alias 名字]
       执行修复（先备份）。default = 计划里默认勾选的项。需要管理员的项会弹一次 UAC。
-  ceg restore [--list] [--id 备份编号]
-      还原某次修复；不带 --id 时还原最近一次。
+  ceg restore [--list] [--id 备份编号 [--items 动作id,...]]
+      还原某次修复；不带 --id 时还原最近一次；--items 只还原其中几项（动作 id 见 --list）。
+  ceg records [--json]
+      只读：列出「记录」页的修复、还原、更新、清理。
   ceg clean   code|desktop|browser [--browser 名字] --plan|--yes [--json]
       清理登录数据。先用 --plan 看清单，确认后再用 --yes 执行。
   ceg update  --check [--json]
@@ -79,6 +81,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdFix(eng, rest, stdout, stderr, st)
 	case "restore":
 		return cmdRestore(eng, rest, stdout, stderr, st)
+	case "records":
+		return cmdRecords(eng, rest, stdout, stderr)
 	case "clean":
 		return cmdClean(eng, rest, stdout, stderr, st)
 	case "update":
@@ -232,8 +236,19 @@ func cmdRestore(eng *engine.Engine, args []string, stdout, stderr io.Writer, st 
 	fs := newFlags("restore", stderr)
 	list := fs.Bool("list", false, "列出备份")
 	id := fs.String("id", "", "备份编号")
+	itemsArg := fs.String("items", "", "只还原这些动作，逗号分隔（动作 id 见 --list）；不写 = 整次还原")
 	asJSON := fs.Bool("json", false, "输出 JSON")
 	if err := fs.Parse(args); err != nil {
+		return 3
+	}
+	var items []string
+	for _, it := range strings.Split(*itemsArg, ",") {
+		if it = strings.TrimSpace(it); it != "" {
+			items = append(items, it)
+		}
+	}
+	if len(items) > 0 && *id == "" {
+		fmt.Fprintln(stderr, "按项还原要同时写 --id 备份编号")
 		return 3
 	}
 	backups := eng.Backups()
@@ -250,7 +265,17 @@ func cmdRestore(eng *engine.Engine, args []string, stdout, stderr io.Writer, st 
 			if b.Restored {
 				mark = "（已还原）"
 			}
-			fmt.Fprintf(stdout, "%s  %s%s\n    %s\n", b.ID, b.CreatedAt, mark, strings.Join(b.Actions, "；"))
+			fmt.Fprintf(stdout, "%s  %s%s\n", b.ID, b.CreatedAt, mark)
+			for _, it := range b.Items {
+				state := "可还原"
+				switch {
+				case !it.OK:
+					state = "没改成"
+				case it.RestoredAt != "":
+					state = "已还原 " + it.RestoredAt
+				}
+				fmt.Fprintf(stdout, "    %-22s %s（%s）\n", it.ID, it.Title, state)
+			}
 		}
 		return 0
 	}
@@ -267,7 +292,7 @@ func cmdRestore(eng *engine.Engine, args []string, stdout, stderr io.Writer, st 
 		fmt.Fprintln(stdout, "没有可还原的修复。")
 		return 0
 	}
-	res := eng.Restore(target)
+	res := eng.RestoreItems(target, items)
 	if *asJSON {
 		printJSON(stdout, res)
 	} else {
@@ -275,6 +300,31 @@ func cmdRestore(eng *engine.Engine, args []string, stdout, stderr io.Writer, st 
 	}
 	if !res.OK {
 		return 2
+	}
+	return 0
+}
+
+// cmdRecords 列出「记录」页的条目（只读）。
+func cmdRecords(eng *engine.Engine, args []string, stdout, stderr io.Writer) int {
+	fs := newFlags("records", stderr)
+	asJSON := fs.Bool("json", false, "输出 JSON")
+	if err := fs.Parse(args); err != nil {
+		return 3
+	}
+	rs := eng.Records()
+	if *asJSON {
+		printJSON(stdout, rs)
+		return 0
+	}
+	if len(rs) == 0 {
+		fmt.Fprintln(stdout, "还没有记录。")
+	}
+	kinds := map[string]string{"fix": "修复", "restore": "还原", "update": "更新", "clean": "清理"}
+	for _, r := range rs {
+		fmt.Fprintf(stdout, "%s  %s  %s（%s）\n", r.At, kinds[r.Kind], r.Title, r.State)
+		for _, d := range r.Diffs {
+			fmt.Fprintf(stdout, "    %s：%s → %s\n", d.What, d.From, d.To)
+		}
 	}
 	return 0
 }

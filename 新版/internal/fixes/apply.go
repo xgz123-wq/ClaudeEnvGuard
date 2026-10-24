@@ -24,16 +24,22 @@ const (
 	manifestAdmin = "manifest-admin.json"
 	requestAdmin  = "request-admin.json"
 	resultAdmin   = "result-admin.json"
+	// requestRestore 是按项还原时交给提权进程的动作 id 列表；没有这个文件表示整次还原。
+	requestRestore = "request-restore.json"
 )
 
 // Manifest 是一次修复的备份清单。
 type Manifest struct {
-	ID         string   `json:"id"`
-	CreatedAt  string   `json:"createdAt"`
-	Actions    []string `json:"actions"`
-	Records    []Record `json:"records"`
-	RestoredAt string   `json:"restoredAt,omitempty"`
+	ID         string               `json:"id"`
+	CreatedAt  string               `json:"createdAt"`
+	Actions    []string             `json:"actions"`
+	Items      []model.BackupItem   `json:"items,omitempty"` // v2.2 起：每个动作的标题和改动，按项还原用；更早的备份没有
+	Records    []Record             `json:"records"`
+	RestoredAt string               `json:"restoredAt,omitempty"`
+	Restores   []model.RestoreEvent `json:"restores,omitempty"`
 }
+
+const timeLayout = "2006-01-02 15:04:05"
 
 // BackupRoot 是所有修复备份的根目录。
 func BackupRoot(localAppData string) string {
@@ -110,11 +116,13 @@ func Apply(sys platform.OS, plan model.FixPlan, ids []string, selfExe string) mo
 	}
 	var user, admin []model.FixAction
 	var titles []string
+	var items []model.BackupItem
 	for _, a := range plan.Actions {
 		if !want[a.ID] {
 			continue
 		}
 		titles = append(titles, a.Title)
+		items = append(items, model.BackupItem{ID: a.ID, Title: a.Title, Changes: a.Changes, NeedsAdmin: a.NeedsAdmin})
 		if a.NeedsAdmin && !sys.IsAdmin() {
 			admin = append(admin, a)
 		} else {
@@ -132,13 +140,24 @@ func Apply(sys platform.OS, plan model.FixPlan, ids []string, selfExe string) mo
 	x := &Executor{Sys: sys, Dir: dir}
 	records, outs := runActions(x, user)
 	res.Outcomes = append(res.Outcomes, outs...)
-	m := Manifest{ID: id, CreatedAt: time.Now().Format("2006-01-02 15:04:05"), Actions: titles, Records: records}
+	m := Manifest{ID: id, CreatedAt: time.Now().Format(timeLayout), Actions: titles, Items: items, Records: records}
 	if err := writeJSON(filepath.Join(dir, manifestUser), m); err != nil {
 		res.Outcomes = append(res.Outcomes, model.StepOutcome{Message: "写备份清单失败：" + err.Error()})
 	}
 	if len(admin) > 0 {
 		res.Outcomes = append(res.Outcomes, runElevated(sys, dir, admin, selfExe, "--elevated-apply")...)
 	}
+	// 管理员部分跑完再记每项成没成：失败的动作已撤回，记录页不给它勾选框
+	okByID := map[string]bool{}
+	for _, o := range res.Outcomes {
+		if o.ActionID != "" {
+			okByID[o.ActionID] = o.OK
+		}
+	}
+	for i := range m.Items {
+		m.Items[i].OK = okByID[m.Items[i].ID]
+	}
+	_ = writeJSON(filepath.Join(dir, manifestUser), m)
 	res.OK = true
 	ok := 0
 	for _, o := range res.Outcomes {
@@ -255,7 +274,7 @@ func validateAction(a model.FixAction) error {
 
 // ---------------------------------------------------------------- 还原
 
-// ListBackups 列出所有修复备份，新的在前。
+// ListBackups 列出所有修复备份，新的在前。每次修复带上逐项的改动和还原状态，供「记录」页按项还原。
 func ListBackups(localAppData string) []model.BackupInfo {
 	root := BackupRoot(localAppData)
 	entries, err := os.ReadDir(root)
@@ -272,18 +291,143 @@ func ListBackups(localAppData string) []model.BackupInfo {
 		if readJSON(filepath.Join(dir, manifestUser), &m) != nil {
 			continue
 		}
-		info := model.BackupInfo{ID: e.Name(), Dir: dir, CreatedAt: m.CreatedAt, Actions: m.Actions, Restored: m.RestoredAt != ""}
+		var am Manifest
+		_ = readJSON(filepath.Join(dir, manifestAdmin), &am)
+		info := model.BackupInfo{ID: e.Name(), Dir: dir, CreatedAt: m.CreatedAt, Actions: m.Actions, Restored: m.RestoredAt != "",
+			RestoredAt: m.RestoredAt, Items: itemsOf(m, am), Restores: m.Restores}
 		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
 	return out
 }
 
-func restoreRecords(x *Executor, recs []Record) []model.StepOutcome {
+// itemsOf 返回一次修复的逐项清单。v2.2 之前的备份没有 Items，按备份记录现场拼出来。
+func itemsOf(m, am Manifest) []model.BackupItem {
+	all := append(append([]Record{}, m.Records...), am.Records...)
+	if len(m.Items) > 0 {
+		items := append([]model.BackupItem{}, m.Items...)
+		for i := range items {
+			if items[i].RestoredAt == "" && items[i].OK && !pendingFor(all, items[i].ID) && hasApplied(all, items[i].ID) {
+				items[i].RestoredAt = firstNonEmpty(m.RestoredAt, "已还原")
+			}
+		}
+		return items
+	}
+	var ids []string
+	byID := map[string][]Record{}
+	for _, r := range all {
+		if _, ok := byID[r.ActionID]; !ok {
+			ids = append(ids, r.ActionID)
+		}
+		byID[r.ActionID] = append(byID[r.ActionID], r)
+	}
+	var items []model.BackupItem
+	for _, id := range ids {
+		recs := byID[id]
+		it := model.BackupItem{ID: id, Title: id, OK: hasApplied(recs, id)}
+		if len(ids) == 1 && len(m.Actions) == 1 {
+			it.Title = m.Actions[0]
+		}
+		for _, r := range recs {
+			if r.Applied {
+				it.Changes = append(it.Changes, describeRecord(r)...)
+			}
+		}
+		if it.OK && !pendingFor(recs, id) {
+			it.RestoredAt = firstNonEmpty(lastRestoredAt(recs), m.RestoredAt, "已还原")
+		}
+		items = append(items, it)
+	}
+	return items
+}
+
+func hasApplied(recs []Record, id string) bool {
+	for _, r := range recs {
+		if r.ActionID == id && r.Applied {
+			return true
+		}
+	}
+	return false
+}
+
+func pendingFor(recs []Record, id string) bool {
+	for _, r := range recs {
+		if r.ActionID == id && r.Applied && !r.Restored {
+			return true
+		}
+	}
+	return false
+}
+
+func lastRestoredAt(recs []Record) string {
+	last := ""
+	for _, r := range recs {
+		if r.RestoredAt > last {
+			last = r.RestoredAt
+		}
+	}
+	return last
+}
+
+// describeRecord 把旧备份里的一步改动写成给人看的一行。不显示注册表和配置文件里的原值：可能是令牌。
+func describeRecord(r Record) []model.Change {
+	p, b := r.Params, r.Before
+	switch r.Op {
+	case "region_set":
+		return []model.Change{{What: "区域格式", From: b["locale"], To: p["locale"]}, {What: "国家或地区", From: geoName(b["nation"]), To: p["cc"]}}
+	case "tz_set":
+		return []model.Change{{What: "系统时区", From: b["old"], To: p["id"]}}
+	case "reg_set":
+		return []model.Change{{What: p["name"], From: existedText(b["existed"]), To: "已设置"}}
+	case "reg_delete":
+		return []model.Change{{What: p["name"], From: existedText(b["existed"]), To: "已删除"}}
+	case "json_env":
+		return []model.Change{{What: filepath.Base(p["path"]) + " 的 env", From: "原文件已备份", To: "已修改"}}
+	case "shortcut_write":
+		return []model.Change{{What: filepath.Base(p["path"]), From: "原快捷方式已备份", To: "已改写"}}
+	case "mkdir":
+		return []model.Change{{What: p["path"], From: "没有", To: "已新建"}}
+	case "firewall_add":
+		return []model.Change{{What: "防火墙规则 " + p["name"], From: existedText(b["existed"]), To: "已添加"}}
+	}
+	return []model.Change{{What: r.Op, From: "", To: "已修改"}}
+}
+
+func existedText(s string) string {
+	if s == "false" {
+		return "没有"
+	}
+	return "原值已备份"
+}
+
+// geoName 把 Windows 的 GeoID 换成国家代码，认不出的原样显示。
+func geoName(id string) string {
+	switch id {
+	case "45":
+		return "CN"
+	case "244":
+		return "US"
+	case "122":
+		return "JP"
+	case "242":
+		return "GB"
+	case "215":
+		return "SG"
+	case "94":
+		return "DE"
+	case "":
+		return ""
+	}
+	return "GeoID " + id
+}
+
+// restoreRecords 倒序还原记录里 pick 选中的改动；成功的记下还原时间。
+func restoreRecords(x *Executor, recs []Record, pick func(Record) bool) []model.StepOutcome {
 	var outs []model.StepOutcome
+	now := time.Now().Format(timeLayout)
 	for i := len(recs) - 1; i >= 0; i-- {
 		r := &recs[i]
-		if !r.Applied || r.Restored {
+		if !r.Applied || r.Restored || (pick != nil && !pick(*r)) {
 			continue
 		}
 		what := r.Op + " " + firstNonEmpty(r.Params["path"], r.Params["name"], r.Params["id"], r.Params["locale"])
@@ -291,6 +435,7 @@ func restoreRecords(x *Executor, recs []Record) []model.StepOutcome {
 			outs = append(outs, model.StepOutcome{ActionID: r.ActionID, Op: r.Op, OK: false, Message: "还原失败：" + what + "：" + err.Error()})
 			continue
 		}
+		r.RestoredAt = now
 		msg := "已还原：" + what
 		if r.Message != "" && !strings.HasPrefix(r.Message, "本来就没有") {
 			msg += "（" + r.Message + "）"
@@ -309,8 +454,26 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
-// Restore 还原某次修复：先还原管理员部分（必要时提权），再倒序还原普通部分。
+// pickIDs 返回只选中这些动作的过滤器；ids 为空表示全部。
+func pickIDs(ids []string) func(Record) bool {
+	if len(ids) == 0 {
+		return nil
+	}
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	return func(r Record) bool { return want[r.ActionID] }
+}
+
+// Restore 整次还原某次修复。
 func Restore(sys platform.OS, id, selfExe string) model.ApplyResult {
+	return RestoreItems(sys, id, nil, selfExe)
+}
+
+// RestoreItems 还原某次修复里的指定动作（items 为空 = 整次）：先还原管理员部分（必要时提权），再倒序还原普通部分。
+// 没选中的动作保持现状；每条改动记下还原时间，全部还原后整次标记已还原。
+func RestoreItems(sys platform.OS, id string, items []string, selfExe string) model.ApplyResult {
 	if strings.ContainsAny(id, `\/:`) || id == "" || id == "." || id == ".." {
 		return model.ApplyResult{Message: "备份编号不合法"}
 	}
@@ -319,33 +482,72 @@ func Restore(sys platform.OS, id, selfExe string) model.ApplyResult {
 	if err := readJSON(filepath.Join(dir, manifestUser), &m); err != nil {
 		return model.ApplyResult{Message: "找不到这次修复的备份：" + err.Error()}
 	}
+	pick := pickIDs(items)
 	res := model.ApplyResult{BackupID: id}
 	var am Manifest
-	if readJSON(filepath.Join(dir, manifestAdmin), &am) == nil && pendingRecords(am.Records) {
-		if sys.IsAdmin() {
-			res.Outcomes = append(res.Outcomes, ElevatedRestoreIn(sys, dir)...)
-		} else {
-			res.Outcomes = append(res.Outcomes, runElevated(sys, dir, []model.FixAction{{ID: "admin", Title: "管理员部分"}}, selfExe, "--elevated-restore")...)
+	hasAdmin := readJSON(filepath.Join(dir, manifestAdmin), &am) == nil
+	if len(items) > 0 {
+		known := map[string]bool{}
+		for _, r := range append(append([]Record{}, m.Records...), am.Records...) {
+			known[r.ActionID] = true
+		}
+		for _, it := range items {
+			if !known[it] {
+				return model.ApplyResult{BackupID: id, Message: "这次修复里没有「" + it + "」这一项"}
+			}
 		}
 	}
+	if hasAdmin && pendingPicked(am.Records, pick) {
+		if sys.IsAdmin() {
+			res.Outcomes = append(res.Outcomes, restoreAdminIn(sys, dir, items)...)
+		} else {
+			if err := writeJSON(filepath.Join(dir, requestRestore), items); err != nil {
+				res.Outcomes = append(res.Outcomes, model.StepOutcome{Message: "写还原请求失败：" + err.Error()})
+			} else {
+				res.Outcomes = append(res.Outcomes, runElevated(sys, dir, []model.FixAction{{ID: "admin", Title: "管理员部分"}}, selfExe, "--elevated-restore")...)
+			}
+			_ = os.Remove(filepath.Join(dir, requestRestore))
+		}
+		_ = readJSON(filepath.Join(dir, manifestAdmin), &am) // 提权进程改过管理员清单，重读才知道还剩什么
+	}
 	x := &Executor{Sys: sys, Dir: dir}
-	res.Outcomes = append(res.Outcomes, restoreRecords(x, m.Records)...)
+	res.Outcomes = append(res.Outcomes, restoreRecords(x, m.Records, pick)...)
 	res.OK = true
+	done := map[string]bool{}
+	var doneIDs []string
 	for _, o := range res.Outcomes {
 		if !o.OK {
 			res.OK = false
+		} else if o.ActionID != "" && o.ActionID != "admin" && !done[o.ActionID] {
+			done[o.ActionID] = true
+			doneIDs = append(doneIDs, o.ActionID)
 		}
 	}
-	if res.OK {
-		m.RestoredAt = time.Now().Format("2006-01-02 15:04:05")
-		res.Message = "已全部还原。"
-	} else {
+	now := time.Now().Format(timeLayout)
+	all := append(append([]Record{}, m.Records...), am.Records...)
+	for i := range m.Items {
+		if m.Items[i].RestoredAt == "" && hasApplied(all, m.Items[i].ID) && !pendingFor(all, m.Items[i].ID) {
+			m.Items[i].RestoredAt = now
+		}
+	}
+	full := !pendingRecords(all)
+	switch {
+	case len(res.Outcomes) == 0:
+		res.Message = "这次修复没有需要还原的改动。"
+	case !res.OK:
 		res.Message = "部分项目没能还原，详见每一行的原因。"
+	case full:
+		res.Message = "已全部还原。"
+	default:
+		res.Message = fmt.Sprintf("已还原 %d 项，其余保持现状。", len(doneIDs))
+	}
+	if full && m.RestoredAt == "" && res.OK {
+		m.RestoredAt = now
+	}
+	if len(res.Outcomes) > 0 {
+		m.Restores = append(m.Restores, model.RestoreEvent{At: now, Items: doneIDs, OK: res.OK, Message: res.Message})
 	}
 	_ = writeJSON(filepath.Join(dir, manifestUser), m)
-	if len(res.Outcomes) == 0 {
-		res.Message = "这次修复没有需要还原的改动。"
-	}
 	return res
 }
 
@@ -358,15 +560,30 @@ func pendingRecords(recs []Record) bool {
 	return false
 }
 
-// ElevatedRestore 是提权还原进程的入口。
+func pendingPicked(recs []Record, pick func(Record) bool) bool {
+	for _, r := range recs {
+		if r.Applied && !r.Restored && (pick == nil || pick(r)) {
+			return true
+		}
+	}
+	return false
+}
+
+// ElevatedRestore 是提权还原进程的入口；按项还原时动作 id 在 request-restore.json 里。
 func ElevatedRestore(sys platform.OS, dir string) int {
-	outs := ElevatedRestoreIn(sys, dir)
+	var items []string
+	_ = readJSON(filepath.Join(dir, requestRestore), &items)
+	outs := restoreAdminIn(sys, dir, items)
 	_ = writeJSON(filepath.Join(dir, resultAdmin), outs)
 	return 0
 }
 
-// ElevatedRestoreIn 在当前（管理员）进程里还原管理员部分。
+// ElevatedRestoreIn 在当前（管理员）进程里整次还原管理员部分。
 func ElevatedRestoreIn(sys platform.OS, dir string) []model.StepOutcome {
+	return restoreAdminIn(sys, dir, nil)
+}
+
+func restoreAdminIn(sys platform.OS, dir string, items []string) []model.StepOutcome {
 	var am Manifest
 	if err := readJSON(filepath.Join(dir, manifestAdmin), &am); err != nil {
 		return []model.StepOutcome{{Message: "读不到管理员部分的备份：" + err.Error()}}
@@ -378,7 +595,7 @@ func ElevatedRestoreIn(sys platform.OS, dir string) []model.StepOutcome {
 		}
 	}
 	x := &Executor{Sys: sys, Dir: dir}
-	outs := restoreRecords(x, am.Records)
+	outs := restoreRecords(x, am.Records, pickIDs(items))
 	_ = writeJSON(filepath.Join(dir, manifestAdmin), am)
 	return outs
 }
