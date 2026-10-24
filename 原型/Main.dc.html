@@ -1,0 +1,1234 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Claude 环境卫士 完整原型</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#f3efe6}
+a{color:#a8431f}a:hover{color:#7a2f14}
+button{font-family:inherit;cursor:pointer}
+button:disabled{cursor:default}
+@keyframes ceg-spin{to{transform:rotate(360deg)}}
+@keyframes ceg-pulse{0%{box-shadow:0 0 0 0 rgba(196,83,44,.45)}70%{box-shadow:0 0 0 12px rgba(196,83,44,0)}100%{box-shadow:0 0 0 0 rgba(196,83,44,0)}}
+@keyframes ceg-stripe{to{background-position:28px 0}}
+@keyframes ceg-pop{0%{transform:scale(.96)}60%{transform:scale(1.02)}100%{transform:scale(1)}}
+@keyframes ceg-flow{to{stroke-dashoffset:-24}}
+@keyframes ceg-shimmer{0%{opacity:.45}50%{opacity:1}100%{opacity:.45}}
+@keyframes ceg-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.ceg-spin{display:inline-block;animation:ceg-spin 1.2s linear infinite}
+.ceg-pulse{animation:ceg-pulse 1.4s ease-out infinite}
+.ceg-stripe{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.25) 0 7px,transparent 7px 14px);background-size:28px 28px;animation:ceg-stripe .8s linear infinite}
+.ceg-pop{animation:ceg-pop .45s ease-out}
+.ceg-flow{stroke-dasharray:6 6;animation:ceg-flow .9s linear infinite}
+.ceg-shimmer{animation:ceg-shimmer 1.1s ease-in-out infinite}
+.ceg-in{animation:ceg-in .3s ease-out both}
+.ceg-fill{transition:width .35s ease}
+@media (prefers-reduced-motion: reduce){.ceg-spin,.ceg-pulse,.ceg-stripe,.ceg-pop,.ceg-flow,.ceg-shimmer,.ceg-in{animation:none}}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: #f3efe6; color: #1f1b16; font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 1.5; box-sizing: border-box; padding: 12px 16px 24px;">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px;">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #4a443b;">
+<span>原型 · 打开即自动检查 · 时间按比例加速 · 「换一种情况」只在原型里有</span>
+<button onClick="{{onCycle}}" style="min-height: 32px; padding: 0 14px; border: 1px solid #cfc5b1; border-radius: 16px; background: #fbf9f4; color: #1f1b16; font-size: 12px;">换一种情况看看 · {{demoLabel}}</button>
+</div>
+
+<div style="position: relative; background: #fbf9f4; border: 1px solid #ddd4c3; border-radius: 12px; overflow: hidden;">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 16px; border-bottom: 1px solid #ddd4c3; background: #f6f2ea;">
+<div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+<span style="font-size: 15px; font-weight: 600; padding-right: 16px;">Claude 环境卫士</span>
+<sc-for list="{{tabs}}" as="tb" hint-placeholder-count="2">
+<button onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}<sc-if value="{{tb.hasBadge}}" hint-placeholder-val="{{false}}"><span style="{{tb.badgeStyle}}">{{tb.badge}}</span></sc-if></button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="font-size: 12px; color: #4a443b;">{{lastText}}</span>
+<button onClick="{{openSettings}}" style="{{gearStyle}}">⚙ 设置</button>
+<button onClick="{{toggleMenu}}" aria-label="更多" style="min-width: 44px; min-height: 36px; border: 1px solid #cfc5b1; border-radius: 8px; background: #fbf9f4; color: #1f1b16; font-size: 16px;">⋯</button>
+</div>
+</div>
+
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; right: 16px; top: 50px; z-index: 5; width: 240px; background: #fbf9f4; border: 1px solid #cfc5b1; border-radius: 10px; box-shadow: 0 12px 28px -12px rgba(31,27,22,.35); padding: 6px; display: flex; flex-direction: column;">
+<sc-for list="{{menuItems}}" as="m" hint-placeholder-count="4">
+<button onClick="{{m.click}}" style="text-align: left; min-height: 40px; padding: 0 12px; border: none; border-radius: 6px; background: transparent; color: #1f1b16; font-size: 13px; display: flex; justify-content: space-between; align-items: center;"><span>{{m.label}}</span><span style="font-size: 12px; color: #6b6458;">{{m.note}}</span></button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{toast}}" hint-placeholder-val="{{false}}">
+<div class="ceg-in" style="position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 6; background: #1f1b16; color: #f3efe6; border-radius: 8px; padding: 10px 16px; font-size: 13px; max-width: 80%;">{{toastText}}</div>
+</sc-if>
+
+<sc-if value="{{isCheck}}" hint-placeholder-val="{{true}}">
+<div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px;">
+<div style="{{gHeroStyle}}">
+<div style="display: flex; align-items: center; gap: 14px; min-width: 0;">
+<span class="{{gHeroIconCls}}" style="{{gHeroIconStyle}}">{{gHeroIcon}}</span>
+<div style="display: flex; flex-direction: column; min-width: 0;">
+<span style="font-size: 18px; font-weight: 600;">{{gHeroTitle}}</span>
+<span style="color: #4a443b;">{{gHeroLine}}</span>
+<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: #4a443b; margin-top: 4px;">随 IP 项按：<span style="font-family: 'Cascadia Mono', Consolas, monospace;">{{targetText}}</span><button onClick="{{openSettings}}" style="border: none; background: transparent; color: #a8431f; font-size: 12px; padding: 0 4px; min-height: 24px; text-decoration: underline;">改</button></span>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+<button onClick="{{gBtnClick}}" disabled="{{gBtnDisabled}}" style="{{gBtnStyle}}">{{gBtnLabel}}</button>
+<sc-if value="{{gHasSecond}}" hint-placeholder-val="{{false}}"><button onClick="{{gSecondClick}}" style="min-height: 44px; padding: 0 16px; border: 1px solid #cfc5b1; border-radius: 8px; background: #fbf9f4; color: #1f1b16; font-size: 14px;">{{gSecondLabel}}</button></sc-if>
+<span style="font-size: 12px; color: #4a443b;">{{gBtnHint}}</span>
+</div>
+</div>
+
+<button onClick="{{pickRoute}}" style="{{routeStyle}}">
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #4a443b;"><span>线路 · 三个入口各走自己的端口</span><span>{{routeNote}}</span></div>
+<div style="display: grid; grid-template-columns: 118px minmax(0, 1fr) 150px; align-items: center; height: 132px;">
+<div style="display: flex; flex-direction: column; justify-content: space-between; height: 120px;">
+<sc-for list="{{entries}}" as="e" hint-placeholder-count="3">
+<div style="{{e.style}}"><span style="font-size: 12px; font-weight: 600;">{{e.name}}</span><span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11px; color: #4a443b;">{{e.port}}</span></div>
+</sc-for>
+</div>
+<svg viewBox="0 0 200 120" preserveAspectRatio="none" style="width: 100%; height: 120px;" aria-hidden="true">
+<sc-for list="{{wires}}" as="w" hint-placeholder-count="3">
+<path d="{{w.d}}" class="{{w.cls}}" style="{{w.style}}" fill="none"></path>
+</sc-for>
+</svg>
+<div style="display: flex; flex-direction: column; justify-content: space-around; height: 120px; gap: 6px;">
+<sc-for list="{{exits}}" as="x" hint-placeholder-count="1">
+<div class="ceg-in" style="{{x.style}}"><span style="font-size: 12px; font-weight: 600;">{{x.place}}</span><span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11px;">{{x.ip}}</span><span style="font-size: 11px; color: #4a443b;">{{x.note}}</span></div>
+</sc-for>
+</div>
+</div>
+</button>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px;">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="5">
+<button onClick="{{c.pick}}" style="{{c.style}}">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%;"><span style="font-weight: 600; font-size: 13px;">{{c.name}}</span><span class="{{c.markCls}}" style="{{c.markStyle}}">{{c.mark}}</span></span>
+<span style="font-size: 12px; color: #4a443b; text-align: left;">{{c.sub}}</span>
+</button>
+</sc-for>
+</div>
+
+<div style="border: 1px solid #ddd4c3; border-radius: 12px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 300px; box-sizing: border-box;">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+<span style="font-weight: 600;">{{gDetailTitle}}</span>
+<span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 12px; color: #4a443b;">{{gDetailHint}}</span><sc-if value="{{showBack}}" hint-placeholder-val="{{false}}"><button onClick="{{goBack}}" style="min-height: 32px; padding: 0 12px; border: 1px solid #cfc5b1; border-radius: 8px; background: #fbf9f4; color: #1f1b16; font-size: 12px;">返回</button></sc-if></span>
+</div>
+
+<sc-if value="{{hasTools}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: #f6f2ea;">
+<span style="font-size: 12px; color: #4a443b; flex: 1 1 200px;">{{toolNote}}</span>
+<sc-for list="{{tools}}" as="tl" hint-placeholder-count="3">
+<button onClick="{{tl.click}}" style="{{tl.style}}">{{tl.label}}</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{showRestore}}" hint-placeholder-val="{{false}}">
+<sc-for list="{{backups}}" as="bk" hint-placeholder-count="3">
+<div class="ceg-in" style="{{bk.rowStyle}}">
+<span style="display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0;"><span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #4a443b;">{{bk.at}}</span><span>{{bk.acts}}</span></span>
+<button onClick="{{bk.open}}" style="min-height: 36px; padding: 0 12px; border: 1px solid #cfc5b1; border-radius: 8px; background: #fbf9f4; color: #1f1b16; font-size: 12px;">打开目录</button>
+<sc-if value="{{bk.canRestore}}" hint-placeholder-val="{{true}}"><button onClick="{{bk.restore}}" style="min-height: 36px; padding: 0 14px; border: none; border-radius: 8px; background: #c4532c; color: #fff; font-size: 12px; font-weight: 600;">还原这次</button></sc-if>
+<sc-if value="{{bk.done}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; padding: 1px 10px; border-radius: 10px; background: #ebe5d8; color: #5a5348;">已还原</span></sc-if>
+</div>
+</sc-for>
+</sc-if>
+
+<sc-if value="{{showClean}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 12px; color: #8a2419; background: #f6d8d2; border-radius: 8px; padding: 6px 10px;">登录凭据删了不留备份（留备份等于没清）；{{cleanApp}}要先完全退出，在运行时会拒绝。</div>
+<sc-for list="{{cleanItems}}" as="ci" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 2px 10px;">
+<span style="font-size: 11px; color: #fff; background: #bf3a2b; border-radius: 4px; padding: 0 6px; white-space: nowrap;">{{ci.act}}</span>
+<span style="flex: 1 1 auto; min-width: 0; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ci.path}}</span>
+<span style="font-size: 12px; color: #4a443b;">{{ci.note}}</span>
+</div>
+</sc-for>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 6px 10px;">
+<label style="display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1 1 260px;"><input type="checkbox" checked="{{cleanOk}}" onChange="{{toggleCleanOk}}" style="width: 18px; height: 18px; accent-color: #bf3a2b;"><span>我核对过上面的清单，知道删了不能恢复</span></label>
+<button onClick="{{doClean}}" disabled="{{cleanDisabled}}" style="{{cleanBtnStyle}}">删除这 {{cleanCount}} 项</button>
+</div>
+</sc-if>
+
+<sc-if value="{{showPlan}}" hint-placeholder-val="{{false}}">
+<sc-for list="{{plan}}" as="a" hint-placeholder-count="5">
+<label style="{{a.rowStyle}}">
+<input type="checkbox" checked="{{a.on}}" onChange="{{a.toggle}}" disabled="{{a.lock}}" style="width: 18px; height: 18px; accent-color: #c4532c;">
+<span class="{{a.markCls}}" style="{{a.markStyle}}">{{a.mark}}</span>
+<span style="display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0;"><span>{{a.title}}</span><span style="font-size: 12px; color: #4a443b; font-family: 'Cascadia Mono', Consolas, monospace;">{{a.change}}</span></span>
+<sc-if value="{{a.admin}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; color: #4a3b78; background: #e5e0f1; border-radius: 4px; padding: 0 6px; white-space: nowrap;">要管理员</span></sc-if>
+<sc-if value="{{a.opt}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; color: #6e4708; background: #f4e5c8; border-radius: 4px; padding: 0 6px; white-space: nowrap;">可选</span></sc-if>
+</label>
+</sc-for>
+</sc-if>
+
+<sc-if value="{{showEmpty}}" hint-placeholder-val="{{false}}">
+<div class="ceg-in" style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 8px; background: #dcebdf; color: #1f5c38;">
+<span style="width: 32px; height: 32px; border-radius: 16px; background: #2e7a4d; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px;">✓</span>
+<span style="display: flex; flex-direction: column;"><span style="font-weight: 600;">必检项都没问题</span><span style="font-size: 13px;">换节点、更新 Claude 之后再来查一次。下面是不影响使用的可选项。</span></span>
+</div>
+</sc-if>
+
+<sc-for list="{{gRows}}" as="r" hint-placeholder-count="5">
+<div class="{{r.cls}}" style="{{r.rowStyle}}">
+<span style="{{r.dotStyle}}">{{r.mark}}</span>
+<span style="display: flex; flex-direction: column; flex: 0 1 300px; min-width: 0;">
+<span style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;"><span>{{r.title}}</span><span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11px; color: #6b6458;">{{r.id}}</span><sc-if value="{{r.opt}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; color: #6e4708; background: #f4e5c8; border-radius: 4px; padding: 0 6px;">可选</span></sc-if></span>
+<sc-if value="{{r.hasWhy}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: #4a443b;">{{r.why}}</span></sc-if>
+</span>
+<span style="flex: 1 1 200px; min-width: 0; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #4a443b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{r.cur}}</span>
+<sc-if value="{{r.fixable}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; color: #7a2f14; background: #f4dccf; border-radius: 4px; padding: 0 6px; white-space: nowrap;">能一键修</span></sc-if>
+<span style="{{r.pillStyle}}">{{r.pill}}</span>
+</div>
+</sc-for>
+
+<sc-if value="{{showPassToggle}}" hint-placeholder-val="{{false}}">
+<button onClick="{{togglePass}}" style="align-self: flex-start; min-height: 36px; padding: 0 12px; border: 1px dashed #cfc5b1; border-radius: 8px; background: transparent; color: #4a443b; font-size: 13px;">{{passToggleText}}</button>
+</sc-if>
+</div>
+
+</div>
+</sc-if>
+
+<sc-if value="{{isUpdate}}" hint-placeholder-val="{{false}}">
+<div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+
+<div style="{{heroStyle}}">
+<div style="display: flex; align-items: center; gap: 14px; flex: 999 1 460px; min-width: 0;">
+<span class="{{heroIconCls}}" style="{{heroIconStyle}}">{{heroIcon}}</span>
+<div style="display: flex; flex-direction: column; min-width: 0;">
+<span style="font-size: 18px; font-weight: 600;">{{heroTitle}}</span>
+<span style="color: #4a443b;">{{heroLine}}</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 1 1 auto;">
+<div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+<sc-if value="{{hasSecond}}" hint-placeholder-val="{{false}}"><button onClick="{{secondClick}}" style="min-height: 44px; padding: 0 16px; border: 1px solid #cfc5b1; border-radius: 8px; background: #fbf9f4; color: #1f1b16; font-size: 14px;">{{secondLabel}}</button></sc-if>
+<button onClick="{{btnClick}}" disabled="{{btnDisabled}}" style="{{btnStyle}}">{{btnLabel}}</button>
+</div>
+<span style="font-size: 12px; color: #4a443b;">{{btnHint}}</span>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
+<sc-for list="{{products}}" as="p" hint-placeholder-count="3">
+<div class="{{p.cls}}" style="{{p.cardStyle}}">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+<span style="font-weight: 600;">{{p.name}}</span>
+<span style="{{p.pillStyle}}">{{p.pill}}</span>
+</div>
+<div style="display: flex; align-items: baseline; gap: 8px; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px;">
+<span>{{p.from}}</span><sc-if value="{{p.showTo}}" hint-placeholder-val="{{true}}"><span style="color: #8b8375;">→</span><span style="font-weight: 600;">{{p.to}}</span></sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+
+<div style="background: #f6f2ea; border: 1px solid #ddd4c3; border-radius: 12px; padding: 14px 20px 10px; display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #4a443b;">
+<span>{{flowHint}}</span>
+<span>{{overallText}}</span>
+</div>
+<div style="position: relative; padding: 0 22px;">
+<div style="position: absolute; left: 44px; right: 44px; top: 21px; height: 4px; border-radius: 2px; background: #ddd4c3;"></div>
+<div class="ceg-fill" style="{{trackStyle}}"></div>
+<div style="position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px;">
+<sc-for list="{{phases}}" as="ph" hint-placeholder-count="5">
+<button onClick="{{ph.pick}}" style="background: transparent; border: none; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #1f1b16; min-height: 44px;">
+<span class="{{ph.dotCls}}" style="{{ph.dotStyle}}">{{ph.mark}}</span>
+<span style="{{ph.nameStyle}}">{{ph.name}}</span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #4a443b;">{{ph.time}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px;">
+<div style="flex: 999 1 560px; min-width: 0; border: 1px solid #ddd4c3; border-radius: 12px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 230px; box-sizing: border-box;">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+<span style="font-weight: 600;">{{detailTitle}}</span>
+<span style="font-size: 12px; color: #6b6458;">{{detailHint}}</span>
+</div>
+<sc-if value="{{showBlockers}}" hint-placeholder-val="{{false}}">
+<sc-for list="{{blockers}}" as="b" hint-placeholder-count="2">
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #f6f2ea;">
+<span style="width: 22px; height: 22px; flex: 0 0 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #fff; background: #b0731a;">!</span>
+<div style="display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0;"><span>{{b.title}}</span><span style="font-size: 12px; color: #4a443b;">{{b.sub}}</span></div>
+<sc-if value="{{b.hasLink}}" hint-placeholder-val="{{false}}"><a href="#">{{b.link}}</a></sc-if>
+</div>
+</sc-for>
+</sc-if>
+<sc-if value="{{showTiers}}" hint-placeholder-val="{{false}}">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px;">
+<sc-for list="{{tiers}}" as="tr" hint-placeholder-count="3">
+<div style="{{tr.style}}">
+<span style="font-weight: 600; font-size: 13px;">{{tr.title}}</span>
+<span style="font-size: 12px; color: #4a443b;">{{tr.text}}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-for list="{{detailRows}}" as="s" hint-placeholder-count="5">
+<div style="display: flex; align-items: center; gap: 10px; min-height: 26px;">
+<span class="{{s.dotCls}}" style="{{s.dotStyle}}">{{s.mark}}</span>
+<span style="{{s.nameStyle}}">{{s.name}}</span>
+<sc-if value="{{s.uac}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; color: #4a3b78; background: #e5e0f1; border-radius: 4px; padding: 0 6px;">UAC 内</span></sc-if>
+<span style="flex: 1 1 auto; font-size: 12px; color: #4a443b; min-width: 0;">{{s.detail}}</span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #4a443b; white-space: nowrap;">{{s.secs}}</span>
+</div>
+<sc-if value="{{s.hasBar}}" hint-placeholder-val="{{false}}"><div style="height: 6px; margin-left: 26px; background: #ebe5d8; border-radius: 3px; overflow: hidden;"><div class="ceg-fill ceg-stripe" style="{{s.barStyle}}"></div></div></sc-if>
+</sc-for>
+</div>
+
+<div style="flex: 1 1 300px; min-width: 0; border: 1px solid #ddd4c3; border-radius: 12px; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;">
+<span style="font-weight: 600;">最近几次</span>
+<sc-for list="{{history}}" as="h" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: 82px minmax(0, 1fr) 62px; gap: 8px; align-items: center; font-size: 12px; min-height: 26px;">
+<span style="font-family: 'Cascadia Mono', Consolas, monospace;">{{h.at}}</span>
+<span style="display: flex; align-items: center; gap: 6px; min-width: 0;"><span style="{{h.dot}}"></span><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{h.what}}</span></span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; text-align: right;">{{h.secs}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+</div>
+</sc-if>
+
+<sc-if value="{{isRecords}}" hint-placeholder-val="{{false}}">
+<div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;">
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<sc-for list="{{recFilters}}" as="rf" hint-placeholder-count="4">
+<button onClick="{{rf.pick}}" style="{{rf.style}}">{{rf.label}}</button>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: #4a443b;">卫士对这台电脑做过的每一次改动，都按时间记在这里</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; min-height: 560px;">
+<div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+<sc-for list="{{recs}}" as="rc" hint-placeholder-count="6">
+<button onClick="{{rc.pick}}" class="ceg-in" style="{{rc.style}}">
+<span style="{{rc.dotStyle}}"></span>
+<span style="display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; text-align: left;">
+<span style="display: flex; align-items: center; gap: 6px;"><span style="{{rc.kindStyle}}">{{rc.kind}}</span><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{rc.title}}</span></span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11px; color: #4a443b;">{{rc.at}}</span>
+</span>
+<span style="{{rc.pillStyle}}">{{rc.pill}}</span>
+</button>
+</sc-for>
+</div>
+<div style="flex: 999 1 520px; min-width: 0; border: 1px solid #ddd4c3; border-radius: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box;">
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="display: flex; align-items: center; gap: 8px;"><span style="{{rd.kindStyle}}">{{rd.kind}}</span><span style="font-size: 17px; font-weight: 600;">{{rd.title}}</span></span>
+<span style="font-size: 12px; color: #4a443b;">{{rd.meta}}</span>
+</div>
+<div style="display: flex; flex-direction: column; border: 1px solid #ddd4c3; border-radius: 8px; overflow: hidden;">
+<div style="display: grid; grid-template-columns: 64px minmax(0, 1.2fr) minmax(0, 1fr) 24px minmax(0, 1fr); gap: 8px; padding: 8px 12px; background: #ebe5d8; font-size: 12px; color: #4a443b;"><span>{{rd.pickHead}}</span><span>改了什么</span><span>改之前</span><span></span><span>改之后</span></div>
+<sc-for list="{{rd.diffs}}" as="df" hint-placeholder-count="3">
+<div style="{{df.rowStyle}}">
+<span style="display: flex; align-items: center;"><sc-if value="{{df.canPick}}" hint-placeholder-val="{{false}}"><input type="checkbox" checked="{{df.picked}}" onChange="{{df.toggle}}" aria-label="还原这一项" style="width: 18px; height: 18px; accent-color: #c4532c;"></sc-if><sc-if value="{{df.done}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; padding: 0 6px; border-radius: 4px; background: #ebe5d8; color: #5a5348; white-space: nowrap;">已还原</span></sc-if></span>
+<span>{{df.what}}</span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #8a2419; text-decoration: line-through; overflow-wrap: anywhere;">{{df.from}}</span>
+<span style="color: #8b8375;">→</span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #1f5c38; overflow-wrap: anywhere;">{{df.to}}</span>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{rd.hasNote}}" hint-placeholder-val="{{false}}"><div style="{{rd.noteStyle}}">{{rd.note}}</div></sc-if>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{rd.btns}}" as="rb" hint-placeholder-count="2">
+<button onClick="{{rb.click}}" style="{{rb.style}}">{{rb.label}}</button>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isSettings}}" hint-placeholder-val="{{false}}">
+<div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;">
+<span style="font-size: 18px; font-weight: 600;">设置</span>
+<div style="display: flex; gap: 8px;">
+<button onClick="{{closeSettings}}" style="min-height: 44px; padding: 0 16px; border: 1px solid #cfc5b1; border-radius: 8px; background: #fbf9f4; color: #1f1b16; font-size: 14px;">取消</button>
+<button onClick="{{saveSettings}}" style="min-height: 44px; padding: 0 22px; border: none; border-radius: 8px; background: #c4532c; color: #fff; font-size: 14px; font-weight: 600;">保存并重新检查</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
+<sc-for list="{{setGroups}}" as="sg" hint-placeholder-count="4">
+<div style="border: 1px solid #ddd4c3; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; background: #fbf9f4;">
+<span style="display: flex; flex-direction: column;"><span style="font-weight: 600;">{{sg.title}}</span><span style="font-size: 12px; color: #4a443b;">{{sg.hint}}</span></span>
+<sc-for list="{{sg.fields}}" as="f" hint-placeholder-count="3">
+<label style="display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px;">
+<span>{{f.label}}</span>
+<sc-if value="{{f.isSelect}}" hint-placeholder-val="{{false}}"><select value="{{f.value}}" onChange="{{f.change}}" style="min-height: 36px; border: 1px solid #cfc5b1; border-radius: 6px; background: #fff; padding: 0 8px; font-family: inherit; font-size: 13px; color: #1f1b16;"><sc-for list="{{f.options}}" as="op" hint-placeholder-count="3"><option value="{{op}}">{{op}}</option></sc-for></select></sc-if>
+<sc-if value="{{f.isInput}}" hint-placeholder-val="{{true}}"><input value="{{f.value}}" onChange="{{f.change}}" style="min-height: 34px; border: 1px solid #cfc5b1; border-radius: 6px; background: #fff; padding: 0 8px; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #1f1b16; min-width: 0;"></sc-if>
+<sc-if value="{{f.isPath}}" hint-placeholder-val="{{false}}"><span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #4a443b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{f.value}}</span></sc-if>
+<sc-if value="{{f.hasBtn}}" hint-placeholder-val="{{false}}"><button onClick="{{f.btnClick}}" style="min-height: 32px; padding: 0 10px; border: 1px solid #cfc5b1; border-radius: 6px; background: #fbf9f4; color: #1f1b16; font-size: 12px;">{{f.btn}}</button></sc-if>
+<sc-if value="{{f.noBtn}}" hint-placeholder-val="{{true}}"><span></span></sc-if>
+</label>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      tab: 'check', menu: false, toast: '', toastLeft: 0,
+      g: 'real', gPhase: 'checking', gck: 0, card: null, showPass: false, planOff: {}, fixK: 0, fixed: false, undoLeft: 0,
+      gView: null, restored: {}, cleanOk: false, cleaned: {}, fixedAt: '',
+      recFilter: 'all', recSel: null, log: [], prevTab: 'check', revertedIds: {}, rsel: {},
+      sett: { portB: '43866', portC: '43865', portD: '43867', region: '跟随出口 IP（推荐）', browser: 'KK-Claude', share: 'C:\\Users\\Administrator\\Desktop\\Claude环境分享版', start: 'https://ip.net.coffee/claude/' },
+      u: 'update', uPhase: 'checking', uck: 0, t: 0, pinned: null, ufixed: false
+    };
+  }
+  componentDidMount() { this.timer = setInterval(() => this.tick(), 100); }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  say(text) { this.setState({ toast: text, toastLeft: 30 }); }
+
+  /* ---------------- 体检数据 ---------------- */
+  items() {
+    const P = (id, g, title, cur, extra) => Object.assign({ id, g, title, cur, st: 'pass' }, extra || {});
+    const base = [
+      P('P1', 'route', '代理客户端与三个专用端口', '43865 / 43866 / 43867 都在监听'),
+      P('P2', 'route', 'Clash Verge 关键设置', 'TUN 开，系统代理关，混合端口 43865'),
+      P('P3', 'route', '三个入口出口一致', '都从 198.51.x.x 出去'),
+      P('P4', 'route', '出口地区 Claude 支持', '美国'),
+      P('P5', 'route', '出口 IP 质量', '评分 100，住宅'),
+      P('B1', 'browser', '专用浏览器「KK-Claude」', '独立数据目录 + 桌面快捷方式'),
+      P('B2', 'browser', '快捷方式启动的是 Chrome', 'chrome.exe'),
+      P('B3', 'browser', '走专用代理端口', 'socks5://127.0.0.1:43866'),
+      P('B4', 'browser', 'DNS 防漏', '域名交给代理解析'),
+      P('B5', 'browser', 'WebRTC 防漏', 'disable_non_proxied_udp'),
+      P('B6', 'browser', '浏览器语言', 'en-US'),
+      P('B7', 'browser', '正在运行的窗口带防护参数', '未运行'),
+      P('B8', 'browser', 'Claude 可达', '可达'),
+      P('C1', 'cli', 'Claude Code', '2.1.310'),
+      P('C2', 'cli', '代理设置（settings.json）', 'HTTPS_PROXY=http://127.0.0.1:43865'),
+      P('C3', 'cli', '没有指向第三方接口', '都没设置'),
+      P('C4', 'cli', '系统环境变量里的代理', '没有'),
+      P('C5', 'cli', '自动更新', 'DISABLE_AUTOUPDATER=1', { adv: true }),
+      P('C6', 'cli', 'Claude API 可达', '可达，美国'),
+      P('D1', 'desktop', 'Claude Desktop', '3.6556.2.0'),
+      P('D2', 'desktop', '专用通道（Desktop 代理策略）', 'HKLM：http://127.0.0.1:43867'),
+      P('D3', 'desktop', '直连防护', '4 个程序、8 条规则', { adv: true }),
+      P('D4', 'desktop', 'Claude 可达', '可达'),
+      P('S1', 'system', '系统时区', 'Eastern Standard Time'),
+      P('S2', 'system', '区域格式与「国家或地区」', '格式 zh-CN，国家 CN', { adv: true, st: 'warn', why: '可选：改成 en-US / US，可还原', fix: true }),
+      P('S3', 'system', 'Windows 显示语言', 'zh-CN', { adv: true, st: 'warn', why: '可选：要自己在系统设置里改' }),
+      P('S4', 'system', 'IPv6 防漏', '公网 IPv6 地址：0 个'),
+      P('S5', 'system', '不走专用端口的程序用的 DNS', '仅参考', { adv: true }),
+      P('S6', 'system', 'Windows 系统代理', '关', { adv: true }),
+      P('S7', 'system', 'Anthropic 网段直连阻断', '已启用', { adv: true })
+    ];
+    const over = {
+      fresh: {
+        B1: { st: 'fail', cur: '没找到专用浏览器', why: '一键修复会新建目录和带防护参数的桌面快捷方式', fix: true, fid: 'b1' },
+        B2: { st: 'na', cur: '—' }, B3: { st: 'na', cur: '—' }, B4: { st: 'na', cur: '—' }, B5: { st: 'na', cur: '—' }, B6: { st: 'na', cur: '—' }, B7: { st: 'na', cur: '—' }, B8: { st: 'na', cur: '—' },
+        C2: { st: 'fail', cur: '没设代理', why: '应为 HTTPS_PROXY=http://127.0.0.1:43865', fix: true, fid: 'c2' },
+        C4: { st: 'warn', cur: 'HTTPS_PROXY=http://127.0.0.1:7890', why: '系统变量会把别的程序也带走，应删掉或改成 43865', fix: true, fid: 'c4' },
+        D2: { st: 'fail', cur: '没有 HKLM 策略', why: 'Desktop 现在走系统网络，不走专用通道', fix: true, fid: 'd2' },
+        S1: { st: 'fail', cur: 'China Standard Time（UTC+8）', why: '和出口美国东部差 12 小时', fix: true, fid: 's1' },
+        S4: { st: 'warn', cur: '公网 IPv6 地址：1 个', why: 'IPv6 可能绕开代理；改 IPv4 优先要重启', fix: true, fid: 's4' }
+      },
+      split: {
+        P1: { st: 'fail', cur: '43867 没在监听', why: 'Desktop 专用端口不在：确认 Clash 已导入分享包的全局脚本' },
+        P3: { st: 'fail', cur: '浏览器 美国 / Claude Code 日本', why: '把 Claude Code 那条线切回 ACCOUNT-US 节点' },
+        C6: { st: 'warn', cur: '可达，日本', why: '跟着 P3 一起修好' },
+        D4: { st: 'unknown', cur: '测不了（端口没监听）', why: '跟着 P1 一起修好' }
+      }
+    };
+    const o = this.state.g === 'real' ? {} : over[this.state.g];
+    const acts = this.planActions();
+    return base.map((x) => {
+      const y = Object.assign({}, x, o[x.id] || {});
+      const act = acts.find((a) => a.id === y.fid);
+      if (this.state.fixed && act && this.isOn(act) && !this.state.revertedIds[act.id]) { y.st = 'pass'; y.cur = '已修好'; y.why = ''; y.fix = false; y.justFixed = true; }
+      if (this.state.fixed && this.state.g === 'fresh' && y.g === 'browser' && y.st === 'na') { y.st = 'pass'; y.cur = '新建后正常'; }
+      return y;
+    });
+  }
+  planActions() {
+    return [
+      { id: 'b1', title: '新建专用浏览器「KK-Claude」', change: '目录 + 桌面快捷方式（带代理、DNS、WebRTC 防漏参数）', from: '没有', to: '目录 + 快捷方式（带防护参数）' },
+      { id: 'c2', title: 'Claude Code 写入代理', change: 'settings.json：HTTPS_PROXY = http://127.0.0.1:43865', from: '没设', to: 'HTTPS_PROXY=http://127.0.0.1:43865' },
+      { id: 'c4', title: '删掉系统变量里的代理', change: 'HTTPS_PROXY=http://127.0.0.1:7890 → 不设', from: 'HTTPS_PROXY=…:7890', to: '不设' },
+      { id: 'd2', title: 'Desktop 代理策略', change: 'HKLM：egressProxyUrl = http://127.0.0.1:43867', admin: true, from: '没有 HKLM 策略', to: 'egressProxyUrl=…:43867' },
+      { id: 's1', title: '系统时区', change: 'China Standard Time → Eastern Standard Time', admin: true, from: 'China Standard Time', to: 'Eastern Standard Time' },
+      { id: 's4', title: 'IPv6 改为 IPv4 优先', change: '重启后生效', admin: true, opt: true, defOff: true, from: 'IPv6 优先', to: 'IPv4 优先' },
+      { id: 's2', title: '区域格式', change: 'zh-CN / CN → en-US / US', opt: true, defOff: true, from: 'zh-CN / CN', to: 'en-US / US' }
+    ];
+  }
+  isOn(a) {
+    const v = this.state.planOff[a.id];
+    return v === undefined ? !a.defOff : !v;
+  }
+
+  /* ---------------- 更新数据 ---------------- */
+  uProducts() {
+    const { u, ufixed } = this.state;
+    const d = ['Claude Desktop', '3.6556.2.0', '3.6601.0.0'];
+    const c = ['Claude Code CLI', '2.1.310', '2.1.311'];
+    if (u === 'latest') return [['Claude Desktop', '3.6556.2.0', '3.6556.2.0'], ['Claude Code CLI', '2.1.310', '2.1.310'], ['VS Code 插件', '2.1.310', '2.1.310']];
+    if (u === 'blocked' && !ufixed) return [d, c, ['VS Code 插件', '2.1.310', '2.1.311']];
+    return [d, c, ['VS Code 插件', '2.1.311', '2.1.311']];
+  }
+  uSteps() {
+    const s = [
+      { ph: 0, name: '查三端版本', dur: 2, detail: '三个源同时查' },
+      { ph: 0, name: '汇总 4 个程序指纹', dur: 2, detail: '没变的文件不重算' },
+      { ph: 1, name: 'npm 安装 CLI', dur: 37, detail: '' },
+      { ph: 1, name: '下载 Desktop 官方包', dur: 180, dl: true, detail: '' },
+      { ph: 1, name: '审核安装包', dur: 8, detail: '签名、包家族、架构' },
+      { ph: 2, name: '等你在 UAC 弹窗点「是」', dur: 5, detail: '整次只弹这一次' },
+      { ph: 3, name: '插件规则迁移到新目录', dur: 4, uac: true },
+      { ph: 3, name: 'CLI 指纹刷新', dur: 10, uac: true },
+      { ph: 3, name: '安装新版 Desktop', dur: 36, uac: true },
+      { ph: 3, name: '防护核验 + 只查动过的项', dur: 8, uac: true, detail: '原来全量总检 18 秒' },
+      { ph: 3, name: '启动条件检查', dur: 5, uac: true },
+      { ph: 3, name: '清理旧安装包', dur: 1, uac: true, detail: '保留最新两版' }
+    ];
+    let a = 0;
+    s.forEach((x) => { x.start = a; a += x.dur; x.end = a; });
+    return s;
+  }
+  uFailT(steps) {
+    if (this.state.u === 'neterr') { const x = steps.find((y) => y.dl); return x.start + Math.round(x.dur * 0.6); }
+    const x = steps.find((y) => y.name === '审核安装包'); return x.start + 5;
+  }
+
+  tick() {
+    const st = this.state;
+    const up = {};
+    if (st.toastLeft > 0) { up.toastLeft = st.toastLeft - 1; if (up.toastLeft === 0) up.toast = ''; }
+    if (st.undoLeft > 0) up.undoLeft = st.undoLeft - 1;
+    if (st.gPhase === 'checking') {
+      if (st.gck >= 40) { up.gPhase = 'ready'; up.gck = 0; } else up.gck = st.gck + 1;
+    }
+    if (st.gPhase === 'fixing') {
+      const n = this.planActions().filter((a) => this.isOn(a)).length;
+      if (st.fixK >= n * 6 + 10) { up.gPhase = 'checking'; up.gck = 0; up.fixed = true; up.undoLeft = 160; up.card = null; up.fixedAt = new Date().toTimeString().slice(0, 5); up.restored = Object.assign({}, st.restored, { now: false });
+        const on = this.planActions().filter((a) => this.isOn(a));
+        up.revertedIds = {};
+        up.log = [{ id: 'fix-' + st.log.length, kind: 'fix', at: '今天 ' + up.fixedAt, title: '一键修复 ' + on.length + ' 项', restoredIdx: [], diffs: on.map((a) => ({ what: a.title, from: a.from, to: a.to, actId: a.id })), meta: '先备份再改；含要管理员的项，弹了一次 UAC', dir: '备份\\20261024-' + up.fixedAt.replace(':', '') + '00' }].concat(st.log); } else up.fixK = st.fixK + 1;
+    }
+    if (st.uPhase === 'checking') {
+      if (st.uck >= 15) {
+        up.uPhase = st.u === 'latest' ? 'latest' : (st.u === 'blocked' && !st.ufixed) ? 'blocked' : 'ready'; up.uck = 0;
+      } else up.uck = st.uck + 1;
+    }
+    if (st.uPhase === 'running') {
+      const steps = this.uSteps();
+      const total = steps[steps.length - 1].end;
+      const cur = steps.find((x) => st.t >= x.start && st.t < x.end);
+      let t = st.t + (cur && cur.dl ? 6 : 1);
+      const willFail = st.u === 'fail' || st.u === 'neterr';
+      if (willFail && t >= this.uFailT(steps)) { up.t = this.uFailT(steps); up.uPhase = 'failed'; }
+      else if (t >= total) {
+        up.t = total; up.uPhase = 'done';
+        const now = new Date().toTimeString().slice(0, 5);
+        up.log = [{ id: 'upd-' + st.log.length, kind: 'update', at: '今天 ' + now, title: 'Desktop 和 CLI 更新', diffs: this.uProducts().filter((r) => r[1] !== r[2]).map((r) => ({ what: r[0], from: r[1], to: r[2] })).concat([{ what: '4 个程序的防护指纹', from: '旧版本', to: '新版本（已核验）' }]), meta: '用时 ' + total + ' 秒 · 结果 passed', dir: '更新记录-20261024-' + now.replace(':', '') + '00' }].concat(st.log);
+      }
+      else up.t = t;
+    }
+    if (Object.keys(up).length) this.setState(up);
+  }
+
+  pill(kind) {
+    const c = { pass: ['#dcebdf', '#1f5c38'], warn: ['#f4e5c8', '#6e4708'], fail: ['#f6d8d2', '#8a2419'], info: ['#e5e0f1', '#4a3b78'], na: ['#ebe5d8', '#5a5348'], unknown: ['#e5e0f1', '#4a3b78'] }[kind];
+    return 'font-size: 12px; padding: 1px 10px; border-radius: 10px; white-space: nowrap; background: ' + c[0] + '; color: ' + c[1] + ';';
+  }
+  heroBox(kind) {
+    const hc = { pass: ['#dcebdf', '#2e7a4d'], warn: ['#f4e5c8', '#b0731a'], fail: ['#f6d8d2', '#bf3a2b'], info: ['#ece8f5', '#6a5a96'] }[kind];
+    return {
+      box: 'background: ' + hc[0] + '; border: 1px solid ' + hc[1] + ';',
+      icon: 'width: 40px; height: 40px; flex: 0 0 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff; background: ' + hc[1] + ';'
+    };
+  }
+  btn(disabled) {
+    return 'min-height: 44px; padding: 0 22px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; white-space: nowrap; ' +
+      (disabled ? 'background: #cfc5b1; color: #4a443b;' : 'background: #c4532c; color: #fff;');
+  }
+
+  /* ---------------- 体检页 ---------------- */
+  checkVals() {
+    const st = this.state;
+    const checking = st.gPhase === 'checking';
+    const items = this.items();
+    const must = items.filter((x) => !x.adv && (x.st === 'fail' || x.st === 'warn' || x.st === 'unknown'));
+    const fails = must.filter((x) => x.st === 'fail').length;
+    const optional = items.filter((x) => x.adv && x.st === 'warn');
+    const fixable = must.filter((x) => x.fix);
+    const actions = this.planActions();
+    const onCount = actions.filter((a) => this.isOn(a)).length;
+    const adminOn = actions.some((a) => a.admin && this.isOn(a));
+
+    const localDone = st.gck >= 5;
+    const routeDone = (i) => st.gck >= 18 + i * 8;
+
+    let hk = 'pass', icon = '✓', spin = false, title = '', line = '', bLabel = '重新检查', bClick = () => this.setState({ gPhase: 'checking', gck: 0 }), bDis = false, hint = '';
+    let second = false, sLabel = '', sClick = () => {};
+    if (checking) {
+      hk = 'info'; icon = '✻'; spin = true; title = '正在检查…';
+      line = (localDone ? '本机配置 ✓' : '读本机配置…') + ' · ' + (localDone ? '测三条线路 ' + [0, 1, 2].filter(routeDone).length + '/3' : '等待联网');
+      bLabel = '检查中…'; bDis = true; hint = '约 4 秒';
+    } else if (st.gPhase === 'plan') {
+      hk = 'warn'; icon = '!'; title = '确认要改的地方'; line = '每一处都会先备份，修完能整次撤销';
+      bLabel = '修这 ' + onCount + ' 项'; bClick = () => this.setState({ gPhase: 'fixing', fixK: 0 }); bDis = onCount === 0;
+      hint = adminOn ? '含要管理员的项，会弹一次 UAC' : '不需要管理员';
+      second = true; sLabel = '先不修'; sClick = () => this.setState({ gPhase: 'ready', card: null });
+    } else if (st.gPhase === 'fixing') {
+      hk = 'info'; icon = '✻'; spin = true; title = '正在修复…'; line = '改完会自动重新检查';
+      bLabel = '修复中…'; bDis = true;
+    } else if (must.length === 0) {
+      title = st.fixed ? '修好 ' + onCount + ' 项，重新检查全部通过' : '全部通过';
+      line = optional.length ? '另有 ' + optional.length + ' 个可选优化，不影响使用' : '没有需要你动手的地方';
+      second = true; sLabel = '用专用浏览器肉眼复核';
+      sClick = () => this.say('已用「' + st.sett.browser + '」打开 ip.net.coffee/claude：WebRTC、浏览器时区这些只能在网页上亲眼看');
+      hint = '程序查的是配置，网页上看到的才算最终结果';
+    } else if (fixable.length) {
+      hk = st.fixed ? 'warn' : 'fail'; icon = '!';
+      const rc = Object.keys(st.revertedIds).length;
+      title = st.fixed ? '修好 ' + (onCount - rc) + ' 项' + (rc ? '（还原了 ' + rc + ' 项）' : '') + '，还剩 ' + must.length + ' 项' : '有 ' + must.length + ' 项没配好';
+      line = st.fixed ? (rc ? '还原的项回到了改之前，想再修可以再点一次' : '剩下的是你没勾的项，想修再点一次') : '其中 ' + fixable.length + ' 项能一键修；先看清要改什么再动手';
+      bLabel = '一键修复'; bClick = () => this.setState({ gPhase: 'plan', card: 'todo' });
+    } else {
+      hk = 'fail'; icon = '!'; title = '有 ' + fails + ' 项要你在 Clash 里处理';
+      line = '这类问题卫士修不了：Desktop 端口没监听、Claude Code 走到了日本节点';
+      bLabel = '处理完，重新检查';
+      second = true; sLabel = '复制给 AI 排查'; sClick = () => this.say('已复制：2 项失败的现象、当前值、目标值 + 一句「先别改，列可能原因和验证方式」');
+    }
+    if (!checking && st.fixed && st.undoLeft > 0 && st.gPhase === 'ready') {
+      second = true; sLabel = '撤销这次修复（' + Math.ceil(st.undoLeft / 10) + ' 秒）';
+      sClick = () => { this.restoreFix(st.log[0] && st.log[0].kind === 'fix' ? st.log[0].id : null); this.say('已撤销，按备份还原了 ' + onCount + ' 处；记录留在「记录」页'); };
+      hint = '过了这几秒也能在「记录」页撤，记录一直在';
+    }
+    const hb = this.heroBox(hk);
+
+    const entryNames = [['专用浏览器', ':43866'], ['Claude Code', ':43865'], ['Claude Desktop', ':43867']];
+    const g = st.g;
+    const entryState = (i) => {
+      if (checking && !routeDone(i)) return 'wait';
+      if (g === 'split' && i === 2) return 'down';
+      return 'ok';
+    };
+    const entries = entryNames.map((e, i) => {
+      const s = entryState(i);
+      const col = { ok: '#2e7a4d', wait: '#cfc5b1', down: '#bf3a2b' }[s];
+      return { name: e[0], port: e[1] + (s === 'down' ? ' · 没监听' : ''), style: 'display: flex; flex-direction: column; padding: 4px 8px; border-radius: 6px; background: #fbf9f4; border: 1px solid ' + col + '; border-left-width: 3px;' };
+    });
+    const ys = [14, 60, 106];
+    const twoExits = g === 'split' && !checking;
+    const exitY = (i) => {
+      if (!twoExits) return 60;
+      return i === 1 ? 92 : 28;
+    };
+    const wires = [0, 1, 2].map((i) => {
+      const s = entryState(i);
+      const y1 = ys[i];
+      if (s === 'down') return { d: 'M0 ' + y1 + ' L60 ' + y1, cls: '', style: 'stroke: #bf3a2b; stroke-width: 2; stroke-dasharray: 4 4;' };
+      const y2 = exitY(i);
+      const d = 'M0 ' + y1 + ' C100 ' + y1 + ', 100 ' + y2 + ', 200 ' + y2;
+      if (s === 'wait') return { d, cls: localDone ? 'ceg-flow' : '', style: 'stroke: #c4532c; stroke-width: 2; opacity: ' + (localDone ? '.9' : '.25') + ';' };
+      const bad = g === 'split' && i === 1;
+      return { d, cls: '', style: 'stroke: ' + (bad ? '#b0731a' : '#2e7a4d') + '; stroke-width: 2.5;' };
+    });
+    let exits = [];
+    if (checking && !routeDone(0)) exits = [{ place: '测出口中…', ip: '', note: '', style: 'display: flex; flex-direction: column; padding: 8px 10px; border-radius: 8px; border: 1px dashed #cfc5b1; color: #6b6458;' }];
+    else if (twoExits) exits = [
+      { place: '美国 · Ashburn', ip: '198.51.x.x', note: '浏览器', style: 'display: flex; flex-direction: column; padding: 6px 10px; border-radius: 8px; background: #dcebdf; border: 1px solid #2e7a4d;' },
+      { place: '日本 · Tokyo', ip: '203.0.x.x', note: 'Claude Code', style: 'display: flex; flex-direction: column; padding: 6px 10px; border-radius: 8px; background: #f4e5c8; border: 1px solid #b0731a;' }
+    ];
+    else exits = [{ place: '美国 · Ashburn', ip: '198.51.x.x', note: '评分 100 · 住宅', style: 'display: flex; flex-direction: column; padding: 8px 10px; border-radius: 8px; background: #dcebdf; border: 1px solid #2e7a4d;' }];
+    const routeSel = st.card === 'route';
+    const routeStyle = 'flex: 1 1 420px; min-width: 0; text-align: left; font-family: inherit; color: #1f1b16; padding: 10px 14px; border-radius: 12px; background: #f6f2ea; display: flex; flex-direction: column; gap: 4px; border: ' + (routeSel ? '2px solid #1f1b16' : '1px solid #ddd4c3') + ';';
+    const routeNote = checking ? (localDone ? '测线路…' : '') : (g === 'split' ? '三个入口没从同一个出口出去' : '三入口 · 一出口');
+
+    const groups = [
+      { id: 'todo', name: '需要处理' }, { id: 'route', name: '线路' }, { id: 'browser', name: '专用浏览器' },
+      { id: 'cli', name: 'Claude Code' }, { id: 'desktop', name: 'Claude Desktop' }, { id: 'system', name: '系统' }
+    ];
+    const defCard = st.gPhase === 'plan' || st.gPhase === 'fixing' ? 'todo' : 'todo';
+    const cardSel = st.card || defCard;
+    const cards = groups.map((gr) => {
+      const list = gr.id === 'todo' ? must : items.filter((x) => x.g === gr.id && !x.adv);
+      const bad = list.filter((x) => x.st === 'fail' || x.st === 'warn' || x.st === 'unknown');
+      const worst = bad.some((x) => x.st === 'fail') ? 'fail' : bad.length ? 'warn' : 'pass';
+      let mark = '✓', markBg = '#2e7a4d', sub = list.length + ' 项都通过';
+      if (gr.id === 'todo') sub = bad.length ? bad.length + ' 项要处理' : '没有要处理的';
+      if (bad.length) { mark = String(bad.length); markBg = worst === 'fail' ? '#bf3a2b' : '#b0731a'; if (gr.id !== 'todo') sub = bad.length + ' 项要看 · 共 ' + list.length + ' 项'; }
+      if (gr.id === 'browser' && g === 'real') sub = 'KK-Claude · ' + sub;
+      let markCls = '';
+      if (checking) {
+        const done = gr.id === 'route' ? routeDone(2) : gr.id === 'todo' ? false : gr.id === 'system' || gr.id === 'cli' || gr.id === 'desktop' || gr.id === 'browser' ? (localDone && routeDone(gr.id === 'browser' ? 0 : gr.id === 'cli' ? 1 : 2)) : localDone;
+        if (!done) { mark = '…'; markBg = '#cfc5b1'; sub = '检查中'; markCls = 'ceg-shimmer'; }
+      }
+      const sel = cardSel === gr.id;
+      return {
+        name: gr.name, sub, mark, markCls,
+        markStyle: 'min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; background: ' + markBg + ';',
+        pick: () => this.setState({ card: gr.id, showPass: false, gView: null, gPhase: st.gPhase === 'plan' ? 'ready' : st.gPhase }),
+        style: 'display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 60px; padding: 8px 12px; border-radius: 10px; font-family: inherit; color: #1f1b16; text-align: left; ' +
+          (sel ? 'background: #fbf9f4; border: 2px solid #1f1b16;' : 'background: #f6f2ea; border: 1px solid #ddd4c3;')
+      };
+    });
+
+    const showPlan = st.gPhase === 'plan' || st.gPhase === 'fixing';
+    let plan = [];
+    if (showPlan) {
+      const onList = actions.filter((a) => this.isOn(a));
+      plan = actions.map((a) => {
+        const on = this.isOn(a);
+        let mark = '', markCls = '', col = '#cfc5b1';
+        if (st.gPhase === 'fixing' && on) {
+          const k = onList.indexOf(a);
+          if (st.fixK >= (k + 1) * 6) { mark = '✓'; col = '#2e7a4d'; }
+          else if (st.fixK >= k * 6) { mark = '✻'; markCls = 'ceg-spin'; col = '#c4532c'; }
+          else { mark = '·'; }
+        }
+        return {
+          title: a.title, change: a.change, admin: !!a.admin, opt: !!a.opt, on, lock: st.gPhase === 'fixing',
+          toggle: () => this.setState({ planOff: Object.assign({}, st.planOff, { [a.id]: on }) }),
+          mark, markCls, markStyle: 'width: 16px; flex: 0 0 16px; text-align: center; font-weight: 600; color: ' + col + ';',
+          rowStyle: 'display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 10px; border-radius: 8px; cursor: pointer; ' + (on ? 'background: #f6f2ea;' : 'background: transparent; color: #6b6458;')
+        };
+      });
+    }
+
+    let rowsSrc = [];
+    let dTitle = '', dHint = '';
+    let showEmpty = false, showPassToggle = false, passToggleText = '';
+    if (showPlan) {
+      dTitle = st.gPhase === 'fixing' ? '正在修复' : '一键修复：勾选要改的';
+      dHint = '默认只勾必修项；可选项要你自己勾';
+    } else if (checking) {
+      dTitle = '检查中'; dHint = '本机项先出，联网项随后到';
+      rowsSrc = items.filter((x) => !x.adv).slice(0, 6).map((x, i) => Object.assign({}, x, { pending: !(localDone && i < 3) }));
+    } else if (cardSel === 'todo') {
+      dTitle = must.length ? '需要处理 ' + must.length + ' 项' : '需要处理';
+      dHint = must.length ? '按严重程度排好了' : '';
+      const rank = { fail: 3, unknown: 2, warn: 1 };
+      rowsSrc = must.slice().sort((a, b) => rank[b.st] - rank[a.st]);
+      if (!must.length) { showEmpty = true; rowsSrc = optional; }
+    } else {
+      const gr = groups.find((x) => x.id === cardSel);
+      const list = items.filter((x) => x.g === cardSel);
+      const bad = list.filter((x) => x.st !== 'pass' && x.st !== 'na');
+      const rest = list.filter((x) => x.st === 'pass' || x.st === 'na');
+      dTitle = gr.name + ' · ' + list.length + ' 项';
+      dHint = '有问题的排前面，通过的收起来';
+      rowsSrc = bad.concat(st.showPass ? rest : []);
+      if (rest.length) { showPassToggle = true; passToggleText = st.showPass ? '收起通过的项' : '另外 ' + rest.length + ' 项通过 · 展开看'; }
+      if (!bad.length && !st.showPass) rowsSrc = [];
+    }
+    /* 卡片自带的工具（原版各页签顶上那一排）、还原记录、清理登录 */
+    const ghost = 'min-height: 36px; padding: 0 12px; border: 1px solid #cfc5b1; border-radius: 8px; background: #fbf9f4; color: #1f1b16; font-size: 12px;';
+    const danger = 'min-height: 36px; padding: 0 12px; border: 1px solid #e3b3aa; border-radius: 8px; background: #fbf9f4; color: #8a2419; font-size: 12px;';
+    const openClean = (k) => () => this.setState({ gView: 'clean-' + k, cleanOk: false });
+    let tools = [], toolNote = '';
+    const view = showPlan || checking ? null : st.gView;
+    if (!view && !showPlan && !checking) {
+      if (cardSel === 'browser') {
+        toolNote = '检查哪个专用浏览器：KK-Claude ▾（最近使用 10-24）';
+        tools = [
+          { label: '打开这个浏览器', click: () => this.say('已按快捷方式参数打开「KK-Claude」'), style: ghost },
+          { label: '在浏览器里复核 IP', click: () => this.say('已在「KK-Claude」里打开 ip.net.coffee/claude'), style: ghost },
+          { label: '清理登录…', click: openClean('browser'), style: danger }
+        ];
+      } else if (cardSel === 'cli') {
+        toolNote = 'Claude Code 读 ~/.claude/settings.json，改完要重启 Claude Code';
+        tools = [{ label: '清理登录…', click: openClean('code'), style: danger }];
+      } else if (cardSel === 'desktop') {
+        toolNote = 'Desktop 的代理来自 HKLM 策略，改完要完全退出（含托盘）再打开';
+        tools = [{ label: '清理登录…', click: openClean('desktop'), style: danger }];
+      } else if (cardSel === 'system') {
+        toolNote = '时区和区域格式「随 IP」：换了出口地区，这里的目标会跟着变';
+      }
+    }
+    let backups = [];
+    let cleanItems = [], cleanApp = '';
+    if (view === 'restore') {
+      dTitle = '还原以前的修复'; dHint = '每次一键修复都会先备份，可以整次撤销';
+      rowsSrc = []; showEmpty = false; showPassToggle = false;
+      const B = (id, at, acts, dir) => {
+        const done = !!st.restored[id] || (id !== 'now');
+        const isDone = id === 'now' ? !!st.restored.now : done;
+        return {
+          at, acts, done: isDone, canRestore: !isDone,
+          open: () => this.say('（原型）打开 ' + dir),
+          restore: () => {
+            this.setState({ restored: Object.assign({}, st.restored, { [id]: true }), fixed: false, undoLeft: 0, gPhase: 'checking', gck: 0, gView: null });
+            this.say('已按备份还原「' + acts + '」，正在重新检查');
+          },
+          rowStyle: 'display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; ' + (isDone ? 'background: transparent; color: #6b6458;' : 'background: #f6f2ea;')
+        };
+      };
+      if (st.fixed || st.restored.now) {
+        const acts = this.planActions().filter((a) => this.isOn(a)).map((a) => a.title).join('；');
+        backups.push(B('now', '今天 ' + (st.fixedAt || '刚才'), acts, '备份\\20261024-' + (st.fixedAt || '').replace(':', '')));
+      }
+      backups.push(B('h3', '2026-10-11 12:51', '区域格式与国家改为 en-US / 美国', '备份\\20261011-125130'));
+      backups.push(B('h2', '2026-10-11 12:50', '区域格式与国家改为 en-US / 美国', '备份\\20261011-125045'));
+      backups.push(B('h1', '2026-10-11 12:50', '区域格式与国家改为 en-US / 美国', '备份\\20261011-125002'));
+    } else if (view && view.indexOf('clean-') === 0) {
+      const k = view.slice(6);
+      cleanApp = { code: 'Claude Code', desktop: 'Claude Desktop', browser: '这个专用浏览器' }[k];
+      dTitle = '清理' + { code: ' Claude Code ', desktop: ' Claude Desktop ', browser: '专用浏览器「KK-Claude」的' }[k] + '登录';
+      dHint = '换账号、重新登录时用；先列清单，核对后才删';
+      rowsSrc = []; showEmpty = false; showPassToggle = false;
+      const L = {
+        code: [['删', '%USERPROFILE%\\.claude\\.credentials.json', '登录凭据'], ['改', '%USERPROFILE%\\.claude.json', '只删登录字段，其他设置保留']],
+        desktop: [['删', '%LOCALAPPDATA%\\Claude-3p\\Cookies', ''], ['删', '%LOCALAPPDATA%\\Claude-3p\\Local Storage', ''], ['删', '%LOCALAPPDATA%\\Claude-3p\\IndexedDB', '']],
+        browser: [['删', '…\\ClaudeAccountBrowsers\\KK-Claude\\UserData\\Default\\Cookies', ''], ['删', '…\\KK-Claude\\UserData\\Default\\Local Storage', ''], ['删', '…\\KK-Claude\\UserData\\Default\\IndexedDB', '']]
+      }[k];
+      cleanItems = L.map((x) => ({ act: x[0], path: x[1], note: x[2] }));
+    }
+
+    const label = { pass: '通过', warn: '警告', fail: '失败', unknown: '未知', na: '不适用' };
+    const gRows = rowsSrc.map((x, i) => {
+      const k = x.pending ? 'info' : x.st;
+      const col = { pass: '#2e7a4d', warn: '#b0731a', fail: '#bf3a2b', unknown: '#6a5a96', na: '#9b9383', info: '#cfc5b1' }[k];
+      const mark = x.pending ? '·' : { pass: '✓', warn: '!', fail: '×', unknown: '?', na: '–' }[x.st];
+      return {
+        title: x.title, id: x.id, opt: !!x.adv, cur: x.pending ? '' : x.cur, why: x.why || '', hasWhy: !x.pending && !!x.why && x.st !== 'pass',
+        fixable: !x.pending && !!x.fix && x.st !== 'pass', pill: x.pending ? '检测中' : (x.justFixed ? '刚修好' : label[x.st]), pillStyle: this.pill(x.pending ? 'info' : x.st),
+        cls: x.pending ? 'ceg-shimmer' : 'ceg-in',
+        dotStyle: 'width: 22px; height: 22px; flex: 0 0 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; background: ' + col + ';',
+        rowStyle: 'display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 10px; border-radius: 8px; animation-delay: ' + (i * 40) + 'ms; ' +
+          (x.st === 'fail' && !x.pending ? 'background: #fbeeea;' : x.st === 'warn' && !x.pending ? 'background: #faf3e4;' : 'background: transparent;')
+      };
+    });
+
+    return {
+      gHeroStyle: 'flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 16px 20px; border-radius: 12px; box-sizing: border-box; ' + hb.box,
+      gHeroIcon: icon, gHeroIconStyle: hb.icon, gHeroIconCls: spin ? 'ceg-spin' : '', gHeroTitle: title, gHeroLine: line,
+      gBtnLabel: bLabel, gBtnClick: bClick, gBtnDisabled: bDis, gBtnStyle: this.btn(bDis), gBtnHint: hint,
+      gHasSecond: second, gSecondLabel: sLabel, gSecondClick: sClick,
+      pickRoute: () => this.setState({ card: 'route', showPass: true, gView: null, gPhase: st.gPhase === 'plan' ? 'ready' : st.gPhase }),
+      routeStyle, routeNote, entries, wires, exits, cards,
+      showPlan, plan, showEmpty, gRows, showPassToggle, passToggleText,
+      togglePass: () => this.setState({ showPass: !st.showPass }),
+      gDetailTitle: dTitle, gDetailHint: dHint,
+      hasTools: tools.length > 0 || toolNote.length > 0, tools, toolNote,
+      showBack: !!view, goBack: () => this.setState({ gView: null }),
+      showRestore: view === 'restore', backups,
+      showClean: !!view && view.indexOf('clean-') === 0, cleanItems, cleanApp, cleanCount: String(cleanItems.length),
+      cleanOk: st.cleanOk, toggleCleanOk: () => this.setState({ cleanOk: !st.cleanOk }),
+      cleanDisabled: !st.cleanOk, cleanBtnStyle: 'min-height: 40px; padding: 0 18px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; ' + (st.cleanOk ? 'background: #bf3a2b; color: #fff;' : 'background: #cfc5b1; color: #4a443b;'),
+      doClean: () => {
+        const now = new Date().toTimeString().slice(0, 5);
+        const entry = { id: 'cln-' + st.log.length, kind: 'clean', at: '今天 ' + now, title: '清理' + cleanApp + '登录', diffs: cleanItems.map((c) => ({ what: c.act === '改' ? '只删登录字段' : '删除', from: c.path, to: c.act === '改' ? '其他设置保留' : '已删除' })), meta: '删之前确认过进程没在运行' };
+        this.setState({ gView: null, cleanOk: false, log: [entry].concat(st.log) });
+        this.say('（原型）已删除 ' + cleanItems.length + ' 项，下次打开' + cleanApp + '要重新登录；已记进「记录」页');
+      },
+      checkBadge: checking ? 0 : must.length
+    };
+  }
+
+  /* ---------------- 更新页 ---------------- */
+  updateVals() {
+    const st = this.state;
+    const { u, t } = st;
+    const phase = st.uPhase;
+    const steps = this.uSteps();
+    const total = steps[steps.length - 1].end;
+    const running = phase === 'running', done = phase === 'done', failed = phase === 'failed', checking = phase === 'checking';
+    const started = running || done || failed;
+    const failAt = this.uFailT(steps);
+    const netErr = u === 'neterr';
+
+    const rows = this.uProducts();
+    const products = rows.map((r, i) => {
+      const behind = r[1] !== r[2];
+      let pill = behind ? '可更新' : '最新', kind = behind ? 'warn' : 'pass';
+      if (i === 2 && u === 'blocked' && !st.ufixed) { pill = '要在 VS Code 点更新'; kind = 'info'; }
+      if (i === 2 && r[1] === '2.1.311' && u !== 'latest') { pill = '已在 VS Code 更新'; kind = 'pass'; }
+      const justDone = done && behind;
+      if (justDone) { pill = '已更新'; kind = 'pass'; }
+      if (failed && behind) { pill = i === 1 && netErr ? '已更新' : '没更新'; kind = i === 1 && netErr ? 'pass' : 'fail'; }
+      if (checking) { pill = '检查中…'; kind = 'info'; }
+      return {
+        name: r[0], from: justDone ? r[2] : r[1], to: r[2], showTo: behind && !justDone && !checking,
+        pill, pillStyle: this.pill(kind), cls: justDone ? 'ceg-pop' : '',
+        cardStyle: 'display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-radius: 12px; border: 1px solid ' +
+          (justDone ? '#2e7a4d' : '#ddd4c3') + '; background: ' + (justDone ? '#dcebdf' : '#fbf9f4') + ';'
+      };
+    });
+    const behindCount = rows.filter((r) => r[1] !== r[2]).length;
+
+    const remain = Math.max(0, total - t);
+    let hk = 'warn', heroTitle = '', heroLine = '', heroIcon = '!', spin = false;
+    let btnLabel = '一键更新', btnClick = () => this.setState({ uPhase: 'running', t: 0, pinned: null }), btnDisabled = false, btnHint = '';
+    let hasSecond = false, secondLabel = '', secondClick = () => {};
+    if (checking) {
+      hk = 'info'; spin = true; heroIcon = '✻'; heroTitle = '正在查三端版本…'; heroLine = '打开卫士就会自动查，约 2 秒';
+      btnLabel = '检查中…'; btnDisabled = true;
+    } else if (running) {
+      const cur = steps.find((x) => t >= x.start && t < x.end) || steps[steps.length - 1];
+      hk = 'info'; spin = true; heroIcon = '✻';
+      heroTitle = cur.name + '…';
+      heroLine = '已用 ' + t + ' 秒 · 预计还要 ' + remain + ' 秒（按最近几次记录估）';
+      btnLabel = '更新中…'; btnDisabled = true; btnHint = '可以最小化，做完会弹通知';
+    } else if (done) {
+      hk = 'pass'; heroIcon = '✓'; heroTitle = '更新完成，用时 ' + total + ' 秒'; heroLine = '三端回读等于最新，防护核验通过';
+      btnLabel = '重新检查'; btnClick = () => this.setState({ u: 'latest', uPhase: 'checking', uck: 0, t: 0, pinned: null }); btnHint = '记录已存到 更新记录-<时间>\\记录.json';
+    } else if (failed && netErr) {
+      hk = 'warn'; heroIcon = '↻'; heroTitle = '下载断了，界面可以自己重试'; heroLine = '网络中断（curl 退出码 28）；CLI 已装好，不用重来';
+      btnLabel = '重试下载'; btnClick = () => this.setState({ u: 'update', uPhase: 'running', t: steps.find((x) => x.dl).start, pinned: null });
+      btnHint = '整包重下约 3 分钟；连续失败 2 次再交给 AI';
+    } else if (failed) {
+      hk = 'fail'; heroIcon = '×'; heroTitle = '安全检查没过，已停下'; heroLine = '示例：安装包签名方不是 Anthropic, PBC。没装、没改任何文件';
+      btnLabel = '复制给 AI 排查'; btnClick = () => this.say('已复制：出错步骤、原因原文、记录目录路径 + 「先别改，列可能原因和验证方式」');
+      btnHint = '这类问题卫士不自己绕过；AI 只读排查，要改会先问你';
+      hasSecond = true; secondLabel = '打开日志'; secondClick = () => this.say('（原型）会打开 更新记录-<时间> 目录');
+    } else if (phase === 'blocked') {
+      hk = 'warn'; heroTitle = '还差 2 件事要你先做'; heroLine = '做完点右边，卫士会重新检查并接着走';
+      btnLabel = '都做好了，重新检查'; btnClick = () => this.setState({ ufixed: true, uPhase: 'checking', uck: 0, pinned: null }); btnHint = '本次没有下载、没有改任何文件';
+    } else if (phase === 'latest') {
+      hk = 'pass'; heroIcon = '✓'; heroTitle = '三端都是最新'; heroLine = '防护不用动。上次更新 10-24 09:42，用时 99.8 秒';
+      btnLabel = '重新检查'; btnClick = () => this.setState({ uPhase: 'checking', uck: 0 });
+    } else {
+      heroTitle = '有 ' + behindCount + ' 端可以更新'; heroLine = '要先退出 Claude；含 Desktop 下载约 300 MB，预计 ' + Math.round(total / 60) + ' 分钟';
+      btnHint = '会弹一次 UAC，那就是确认';
+    }
+    const hb = this.heroBox(hk);
+
+    const phaseNames = ['检查', '下载与安装 CLI', '授权', '安装与核验', '完成'];
+    const phaseRange = [0, 1, 2, 3].map((p) => {
+      const xs = steps.filter((x) => x.ph === p);
+      return { start: xs[0].start, end: xs[xs.length - 1].end, dur: xs[xs.length - 1].end - xs[0].start };
+    });
+    const failPh = steps.find((x) => failAt >= x.start && failAt < x.end).ph;
+    let activePh = -1;
+    if (checking) activePh = 0;
+    else if (running) activePh = steps.find((x) => t >= x.start && t < x.end).ph;
+    else if (done) activePh = 4;
+    else if (failed) activePh = failPh;
+    const shownPh = st.pinned !== null ? st.pinned : (activePh >= 0 ? activePh : (phase === 'blocked' ? 0 : 1));
+    const phases = phaseNames.map((name, i) => {
+      let s = 'wait';
+      if (i < 4) {
+        const r = phaseRange[i];
+        if (checking && i === 0) s = 'run';
+        else if (phase === 'latest' && i === 0) s = 'done';
+        else if ((phase === 'ready' || phase === 'blocked') && i === 0) s = phase === 'blocked' ? 'warn' : 'done';
+        else if (started) {
+          if (done || t >= r.end) s = 'done';
+          else if (t >= r.start) s = 'run';
+          if (failed && i === failPh) s = netErr ? 'warn' : 'fail';
+          if (failed && i > failPh) s = 'wait';
+        }
+      } else if (done) s = 'done';
+      let time = '约 ' + (i < 4 ? phaseRange[i].dur : 0) + ' 秒';
+      if (i === 1) time = '约 4 分钟';
+      if (i === 4) time = done ? '共 ' + total + ' 秒' : '';
+      if (s === 'done' && i < 4 && started) time = phaseRange[i].dur + ' 秒';
+      if (s === 'run' && started) time = (t - phaseRange[i].start) + ' 秒…';
+      if (s === 'fail') time = '停在这里';
+      if (s === 'warn' && failed) time = '可重试';
+      if (phase === 'latest' && i > 0 && i < 4) time = '这次不用';
+      const col = { done: '#2e7a4d', run: '#c4532c', wait: '#cfc5b1', fail: '#bf3a2b', warn: '#b0731a' }[s];
+      const mark = { done: '✓', run: String(i + 1), wait: String(i + 1), fail: '×', warn: '!' }[s];
+      const sel = i === shownPh;
+      return {
+        name, time, mark, pick: () => this.setState({ pinned: st.pinned === i ? null : i }),
+        dotCls: s === 'run' ? 'ceg-pulse' : '',
+        dotStyle: 'width: 40px; height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 15px; box-sizing: border-box; ' +
+          (s === 'wait' ? 'background: #fbf9f4; color: #6b6458; border: 2px solid #cfc5b1;' : 'background: ' + col + '; color: #fff; border: 2px solid ' + col + ';') +
+          (sel ? ' outline: 3px solid #1f1b16; outline-offset: 3px;' : ''),
+        nameStyle: 'font-size: 13px; text-align: center; ' + (s === 'run' || sel ? 'font-weight: 600;' : '') + (s === 'wait' ? ' color: #6b6458;' : '')
+      };
+    });
+    let fillPct = 0;
+    if (started) fillPct = done ? 100 : Math.min(100, (t / total) * 100);
+    const trackStyle = 'position: absolute; left: 44px; top: 21px; height: 4px; border-radius: 2px; background: ' + (failed ? (netErr ? '#b0731a' : '#bf3a2b') : '#2e7a4d') + '; width: calc((100% - 88px) * ' + (fillPct / 100).toFixed(3) + ');';
+
+    let detailRows = [];
+    let detailTitle = '', detailHint = '点上面任意一步看细节';
+    const showBlockers = phase === 'blocked' && shownPh === 0;
+    const showTiers = failed && shownPh === failPh;
+    const blockers = [
+      { title: '退出 Claude', sub: '有 2 个 claude.exe 在运行：CLI 一个、VS Code 里一个；卫士不会替你强杀', hasLink: false, link: '' },
+      { title: '在 VS Code 里把插件更新到 2.1.311', sub: '插件锁了版本不自动更新，这是唯一要手点的一步；点完退出 VS Code', hasLink: true, link: '打开插件页' }
+    ];
+    const tierStyle = (on) => 'display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; ' + (on ? 'background: #f4dccf; border: 2px solid #c4532c;' : 'background: #f6f2ea; border: 1px solid #ddd4c3; color: #4a443b;');
+    const tiers = [
+      { title: '界面自己重试', text: '网络断、下载不完整、超时 → 「重试」', style: tierStyle(netErr) },
+      { title: '要你动手', text: 'Claude 在运行、插件要手点、UAC 点了否 → 待办', style: tierStyle(false) },
+      { title: '交给 AI 看', text: '签名不对、防护核验不过、没见过的错 → 「复制给 AI」', style: tierStyle(!netErr) }
+    ];
+    if (shownPh === 4) {
+      detailTitle = '完成';
+      detailRows = (done ? [
+        { name: '三个产品回读版本都等于最新', mark: '✓', st: 'done' },
+        { name: '4 个程序、8 条防护规则核验通过', mark: '✓', st: 'done' },
+        { name: '本次用时 ' + total + ' 秒，已记进「最近几次」，下次按它估剩余时间', mark: '✓', st: 'done' }
+      ] : [{ name: '还没走到这一步', mark: '·', st: 'wait' }]).map((r) => Object.assign(r, { detail: '', secs: '', uac: false, hasBar: false }));
+    } else if (showBlockers) {
+      detailTitle = '第 1 步 检查：发现 2 件事要你先做'; detailHint = '';
+    } else {
+      detailTitle = '第 ' + (shownPh + 1) + ' 步 ' + phaseNames[shownPh] + (showTiers ? ' · 出错时谁来处理' : '');
+      if (phase === 'latest' && shownPh > 0) {
+        detailRows = [{ name: '三端都是最新，这一步这次不用跑', mark: '·', st: 'wait', detail: '', secs: '', uac: false, hasBar: false }];
+      } else {
+        detailRows = steps.filter((x) => x.ph === shownPh).map((x) => {
+          let s = 'wait';
+          if (checking && x.ph === 0) s = 'run';
+          else if (!started && x.ph === 0 && !checking) s = 'done';
+          else if (started) {
+            if (done || t >= x.end) s = 'done'; else if (t >= x.start) s = 'run';
+            if (failed && failAt >= x.start && failAt < x.end) s = 'fail';
+            if (failed && x.start > failAt) s = 'skip';
+          }
+          let secs = '约 ' + x.dur + ' 秒';
+          if (s === 'done') secs = x.dur + ' 秒';
+          if (s === 'run' && started) secs = (t - x.start) + ' 秒…';
+          if (s === 'run' && checking) secs = '…';
+          if (s === 'fail') secs = netErr ? '中断' : '失败';
+          if (s === 'skip') secs = '没执行';
+          let detail = x.detail || '';
+          let hasBar = false, barStyle = '';
+          if (x.dl && (s === 'run' || s === 'done' || s === 'fail')) {
+            const mb = s === 'done' ? 300 : Math.min(300, Math.round(((t - x.start) / x.dur) * 300));
+            detail = mb + ' / 约 300 MB' + (s === 'fail' ? ' · 网络中断' : ' · 1.7 MB/s');
+            hasBar = s === 'run';
+            barStyle = 'height: 6px; background: #c4532c; width: ' + Math.round((mb / 300) * 100) + '%;';
+          }
+          return { name: x.name, st: s, secs, detail, uac: !!x.uac, hasBar, barStyle, mark: { done: '✓', run: '✻', wait: '·', fail: '×', skip: '·' }[s] };
+        });
+      }
+    }
+    detailRows = detailRows.map((r) => {
+      const col = { done: '#2e7a4d', run: '#c4532c', wait: '#cfc5b1', fail: '#bf3a2b', skip: '#ddd4c3' }[r.st];
+      return Object.assign({}, r, {
+        dotCls: r.st === 'run' ? 'ceg-spin' : '',
+        dotStyle: 'width: 16px; flex: 0 0 16px; text-align: center; font-weight: 600; color: ' + col + ';',
+        nameStyle: (r.st === 'run' ? 'font-weight: 600;' : '') + (r.st === 'wait' || r.st === 'skip' ? ' color: #6b6458;' : '') + ' white-space: nowrap;'
+      });
+    });
+
+    let flowHint = '更新会走这 5 步';
+    if (running) flowHint = '第 ' + (activePh + 1) + ' 步 / 共 5 步';
+    if (done) flowHint = '5 步全部完成';
+    if (failed) flowHint = '停在第 ' + (failPh + 1) + ' 步';
+    if (phase === 'latest') flowHint = '这次只走了第 1 步';
+    const overallText = started ? Math.round(Math.min(100, (t / total) * 100)) + '%' : '';
+
+    const H = (at, kind, what, secs) => ({ at, what, secs, dot: 'width: 8px; height: 8px; flex: 0 0 8px; border-radius: 4px; background: ' + { pass: '#2e7a4d', info: '#6a5a96' }[kind] + ';' });
+    const history = [
+      H('10-24 14:27', 'pass', '已是最新', '7.9 秒'),
+      H('10-24 12:39', 'pass', '已是最新', '26.4 秒'),
+      H('10-24 09:42', 'pass', 'CLI + 插件 → 2.1.310', '99.8 秒'),
+      H('10-24 09:39', 'info', '插件落后，停下等手点', '19.3 秒'),
+      H('10-23 05:40', 'pass', 'Desktop → 3.6556', '293.8 秒')
+    ];
+
+    return {
+      heroStyle: 'display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 20px; border-radius: 12px; min-height: 84px; box-sizing: border-box; ' + hb.box,
+      heroTitle, heroLine, heroIcon, heroIconStyle: hb.icon, heroIconCls: spin ? 'ceg-spin' : '',
+      btnLabel, btnClick, btnDisabled, btnHint, btnStyle: this.btn(btnDisabled),
+      hasSecond, secondLabel, secondClick,
+      products, phases, trackStyle, flowHint, overallText,
+      showBlockers, blockers, showTiers, tiers, detailRows, detailTitle, detailHint, history,
+      updateBadge: checking || done ? 0 : behindCount
+    };
+  }
+
+  /* ---------------- 记录页 ---------------- */
+  restoreFix(id, idxs) {
+    const st = this.state;
+    const now = new Date().toTimeString().slice(0, 5);
+    const target = st.log.find((x) => x.id === id);
+    if (!target) { this.setState({ fixed: false, undoLeft: 0, gPhase: 'checking', gck: 0 }); return; }
+    const done = target.restoredIdx || [];
+    const pick = (idxs || target.diffs.map((d, i) => i)).filter((i) => done.indexOf(i) < 0);
+    const allDone = done.concat(pick);
+    const full = allDone.length >= target.diffs.length;
+    const log = st.log.map((x) => (x.id === id ? Object.assign({}, x, { restoredIdx: allDone, restoredAt: full ? now : '' }) : x));
+    const chosen = pick.map((i) => target.diffs[i]);
+    const entry = [{ id: 'rst-' + st.log.length, kind: 'restore', at: '今天 ' + now, title: '还原「' + target.title + '」' + (full && pick.length === target.diffs.length ? '' : '中的 ' + pick.length + ' 项'), diffs: chosen.map((d) => ({ what: d.what, from: d.to, to: d.from })), meta: '按 ' + target.dir + ' 里的备份还原，只动勾选的项', dir: target.dir }];
+    const rev = Object.assign({}, st.revertedIds);
+    chosen.forEach((d) => { if (d.actId) rev[d.actId] = true; });
+    const rsel = Object.assign({}, st.rsel); delete rsel[id];
+    this.setState({ log: entry.concat(log), revertedIds: rev, rsel, fixed: !full, undoLeft: 0, gPhase: 'checking', gck: 0, restored: Object.assign({}, st.restored, { now: full }) });
+  }
+  baseRecords() {
+    const reg = [{ what: '区域格式', from: 'zh-CN', to: 'en-US' }, { what: '国家或地区', from: 'CN', to: 'US' }];
+    return [
+      { id: 'h-u1', kind: 'update', at: '2026-10-24 09:42', title: 'CLI 和插件 2.1.309 → 2.1.310', diffs: [{ what: 'Claude Code CLI', from: '2.1.309', to: '2.1.310' }, { what: 'VS Code 插件', from: '2.1.309', to: '2.1.310' }, { what: '插件防护规则', from: '…claude-code-2.1.309…', to: '…claude-code-2.1.310…' }], meta: '用时 99.8 秒 · 结果 passed · 一次 UAC', dir: '更新记录-20261024-094215' },
+      { id: 'h-u2', kind: 'update', at: '2026-10-23 05:40', title: 'Desktop 3.1623 → 3.6556', diffs: [{ what: 'Claude Desktop', from: '3.1623.4.0', to: '3.6556.2.0' }, { what: 'Desktop 防护规则', from: '旧版本路径', to: '新版本路径' }, { what: '旧安装包', from: '2 份共 579.4 MB', to: '已删' }], meta: '用时 293.8 秒（清理旧包占 175.8 秒，已改）', dir: '更新记录-20261023-054028' },
+      { id: 'h-f3', kind: 'fix', at: '2026-10-11 12:51', title: '区域格式改为 en-US / 美国', diffs: reg, meta: '你在界面里手动修的', dir: '备份\\20261011-1251', restoredAt: '当天' },
+      { id: 'h-f2', kind: 'fix', at: '2026-10-11 12:50', title: '区域格式改为 en-US / 美国', diffs: reg, meta: '你在界面里手动修的', dir: '备份\\20261011-1250b', restoredAt: '当天' },
+      { id: 'h-f1', kind: 'fix', at: '2026-10-11 12:50', title: '区域格式改为 en-US / 美国', diffs: reg, meta: '你在界面里手动修的', dir: '备份\\20261011-1250a', restoredAt: '当天' }
+    ];
+  }
+  recordsVals() {
+    const st = this.state;
+    const all = st.log.concat(this.baseRecords());
+    const K = { fix: ['修复', '#c4532c', '#f4dccf', '#7a2f14'], restore: ['还原', '#6a5a96', '#e5e0f1', '#4a3b78'], update: ['更新', '#2e7a4d', '#dcebdf', '#1f5c38'], clean: ['清理', '#bf3a2b', '#f6d8d2', '#8a2419'] };
+    const match = (x) => st.recFilter === 'all' || x.kind === st.recFilter || (st.recFilter === 'fix' && x.kind === 'restore');
+    const list = all.filter(match);
+    const sel = list.find((x) => x.id === st.recSel) || list[0];
+    const pillOf = (x) => {
+      if (x.kind === 'fix') return x.restoredAt ? ['已还原', 'na'] : (x.restoredIdx && x.restoredIdx.length ? ['部分还原', 'info'] : ['可还原', 'warn']);
+      if (x.kind === 'clean') return ['不可恢复', 'fail'];
+      if (x.kind === 'restore') return ['已还原', 'na'];
+      return ['完成', 'pass'];
+    };
+    const kindStyle = (k) => 'font-size: 11px; padding: 0 6px; border-radius: 4px; white-space: nowrap; background: ' + K[k][2] + '; color: ' + K[k][3] + ';';
+    const filters = [['all', '全部'], ['fix', '修复与还原'], ['update', '更新'], ['clean', '清理']].map(([id, label]) => {
+      const n = all.filter((x) => id === 'all' || x.kind === id || (id === 'fix' && x.kind === 'restore')).length;
+      return {
+        label: label + ' ' + n, pick: () => this.setState({ recFilter: id, recSel: null }),
+        style: 'min-height: 36px; padding: 0 14px; border-radius: 18px; font-size: 13px; ' + (st.recFilter === id ? 'background: #1f1b16; color: #f3efe6; border: 1px solid #1f1b16;' : 'background: #fbf9f4; color: #1f1b16; border: 1px solid #cfc5b1;')
+      };
+    });
+    const recs = list.map((x) => {
+      const p = pillOf(x);
+      const on = sel && x.id === sel.id;
+      return {
+        kind: K[x.kind][0], title: x.title, at: x.at, pill: p[0], pillStyle: this.pill(p[1]), kindStyle: kindStyle(x.kind),
+        pick: () => this.setState({ recSel: x.id }),
+        dotStyle: 'width: 10px; height: 10px; flex: 0 0 10px; border-radius: 5px; background: ' + K[x.kind][1] + ';',
+        style: 'display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 12px; border-radius: 10px; font-family: inherit; color: #1f1b16; ' + (on ? 'background: #fbf9f4; border: 2px solid #1f1b16;' : 'background: #f6f2ea; border: 1px solid #ddd4c3;')
+      };
+    });
+    const ghost = 'min-height: 40px; padding: 0 14px; border: 1px solid #cfc5b1; border-radius: 8px; background: #fbf9f4; color: #1f1b16; font-size: 13px;';
+    const primary = 'min-height: 40px; padding: 0 18px; border: none; border-radius: 8px; background: #c4532c; color: #fff; font-size: 13px; font-weight: 600;';
+    let rd = { kind: '', kindStyle: '', title: '还没有记录', meta: '', diffs: [], hasNote: false, note: '', noteStyle: '', btns: [], pickHead: '' };
+    if (sel) {
+      let note = '', noteKind = 'info';
+      const btns = [];
+      const restorable = sel.kind === 'fix' && !sel.restoredAt && sel.id.indexOf('h-') !== 0;
+      const doneIdx = sel.restoredIdx || [];
+      const selMap = st.rsel[sel.id] || {};
+      const isPicked = (i) => (selMap[i] === undefined ? true : selMap[i]);
+      const pickedIdx = restorable ? sel.diffs.map((d, i) => i).filter((i) => doneIdx.indexOf(i) < 0 && isPicked(i)) : [];
+      var diffRows = sel.diffs.map((d, i) => {
+        const done = sel.kind === 'fix' && (doneIdx.indexOf(i) >= 0 || (!!sel.restoredAt));
+        const canPick = restorable && doneIdx.indexOf(i) < 0;
+        return Object.assign({}, d, {
+          canPick, done, picked: canPick && isPicked(i),
+          toggle: () => this.setState({ rsel: Object.assign({}, st.rsel, { [sel.id]: Object.assign({}, selMap, { [i]: !isPicked(i) }) }) }),
+          rowStyle: 'display: grid; grid-template-columns: 64px minmax(0, 1.2fr) minmax(0, 1fr) 24px minmax(0, 1fr); gap: 8px; padding: 8px 12px; border-top: 1px solid #ddd4c3; align-items: center; font-size: 13px; ' + (done ? 'color: #8b8375;' : '')
+        });
+      });
+      if (restorable) {
+        note = '勾哪几项就只还原哪几项，没勾的保持现状；还原后自动重新检查。比如只想把时区改回去，就只勾「系统时区」。';
+        const n = pickedIdx.length;
+        btns.push({ label: n ? '还原勾选的 ' + n + ' 项' : '先勾要还原的项', style: n ? primary : 'min-height: 40px; padding: 0 18px; border: none; border-radius: 8px; background: #cfc5b1; color: #4a443b; font-size: 13px; font-weight: 600;', click: () => { if (!n) return; this.restoreFix(sel.id, pickedIdx); this.say('已还原 ' + n + ' 项，其余保持；正在重新检查'); } });
+      }
+      if (sel.kind === 'fix' && sel.restoredAt) note = '这次修复' + (sel.restoredAt === '当天' ? '当天' : '在 ' + sel.restoredAt) + '已经还原，上面的改动现在不生效。';
+      if (sel.kind === 'update') { note = '更新不能回退：备份里没有旧安装包。要看每步耗时和原始日志，打开记录目录里的 记录.json。'; noteKind = 'warn'; }
+      if (sel.kind === 'clean') { note = '登录凭据删了不留备份，所以这条只能看、不能还原。'; noteKind = 'fail'; }
+      if (sel.dir) btns.push({ label: sel.kind === 'update' ? '打开记录目录' : '打开备份目录', style: ghost, click: () => this.say('（原型）打开 ' + sel.dir) });
+      const nc = { info: ['#ece8f5', '#4a3b78'], warn: ['#f4e5c8', '#6e4708'], fail: ['#f6d8d2', '#8a2419'] }[noteKind];
+      rd = {
+        kind: K[sel.kind][0], kindStyle: kindStyle(sel.kind), title: sel.title, meta: sel.at + (sel.meta ? ' · ' + sel.meta : ''),
+        diffs: diffRows, hasNote: !!note, note, btns, pickHead: restorable ? '还原' : '',
+        noteStyle: 'font-size: 13px; padding: 8px 12px; border-radius: 8px; background: ' + nc[0] + '; color: ' + nc[1] + ';'
+      };
+    }
+    return { recFilters: filters, recs, rd };
+  }
+
+  /* ---------------- 设置页 ---------------- */
+  settingsVals() {
+    const st = this.state;
+    const s = st.sett;
+    const set = (k) => (e) => this.setState({ sett: Object.assign({}, s, { [k]: e.target.value }) });
+    const F = (label, k, extra) => Object.assign({ label, value: s[k], change: set(k), isInput: true, isSelect: false, isPath: false, hasBtn: false, noBtn: true, btn: '', btnClick: () => {} }, extra || {});
+    const P = (label, path) => ({ label, value: path, isInput: false, isSelect: false, isPath: true, hasBtn: true, noBtn: false, btn: '打开', btnClick: () => this.say('（原型）打开 ' + path), change: () => {} });
+    return {
+      setGroups: [
+        { title: '三个专用端口', hint: '和 Clash 里的监听端口一致；改了会影响所有检查和修复', fields: [F('专用浏览器', 'portB'), F('Claude Code', 'portC'), F('Claude Desktop', 'portD')] },
+        { title: '目标地区', hint: '「随 IP」的检查项按这里判断', fields: [F('地区', 'region', { isInput: false, isSelect: true, options: ['跟随出口 IP（推荐）', '美国', '日本', '英国', '新加坡', '德国'] })] },
+        { title: '专用浏览器', hint: '体检默认查哪一个；打开时先进哪个网址', fields: [F('默认检查', 'browser', { isInput: false, isSelect: true, options: ['KK-Claude', '账号1-Abdulrashid', 'Gemini专用'] }), F('起始网址', 'start')] },
+        { title: '分享包', hint: '修不了的项会指到分享包对应步骤', fields: [F('分享包目录', 'share', { hasBtn: true, noBtn: false, btn: '选…', btnClick: () => this.say('（原型）选择目录') })] },
+        { title: '数据放在哪', hint: '都在本机，不上传', fields: [P('设置', '%LOCALAPPDATA%\\ClaudeEnvGuard\\设置.json'), P('修复备份', '%LOCALAPPDATA%\\ClaudeEnvGuard\\备份\\'), P('运行日志', '%LOCALAPPDATA%\\ClaudeEnvGuard\\日志\\（保留 7 天）'), P('更新记录', '%LOCALAPPDATA%\\ClaudeNetworkGuard\\更新记录-*')] },
+        { title: '关于', hint: 'Go + Wails · 命令行版 ceg.exe', fields: [{ label: '版本', value: 'v2.1.0', isInput: false, isSelect: false, isPath: true, hasBtn: true, noBtn: false, btn: '复制命令行用法', btnClick: () => this.say('已复制：ceg check / ceg fix --plan / ceg update --check'), change: () => {} }] }
+      ],
+      targetText: (s.region.indexOf('跟随') === 0 ? '美国 · America/New_York · en-US（跟随出口）' : s.region + '（手选）'),
+      openSettings: () => this.setState({ prevTab: st.tab === 'settings' ? st.prevTab : st.tab, tab: 'settings', menu: false }),
+      closeSettings: () => this.setState({ tab: st.prevTab }),
+      saveSettings: () => { this.setState({ tab: 'check', gPhase: 'checking', gck: 0 }); this.say('已保存到 设置.json，正在按新设置重新检查'); }
+    };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const cv = this.checkVals();
+    const uv = this.updateVals();
+    const rv = this.recordsVals();
+    const sv = this.settingsVals();
+    const isCheck = st.tab === 'check' || st.tab === 'records' || st.tab === 'settings' ? st.tab === 'check' : false;
+
+    const gLabels = { real: '全部通过', fresh: '新电脑，没配好', split: '出口不一致' };
+    const uLabels = { update: '有更新', blocked: '要先处理', latest: '已是最新', neterr: '下载断了', fail: '安全检查没过' };
+    const gOrder = ['real', 'fresh', 'split'];
+    const uOrder = ['update', 'blocked', 'latest', 'neterr', 'fail'];
+    const onCycle = () => {
+      if (st.tab !== 'update') {
+        const n = gOrder[(gOrder.indexOf(st.g) + 1) % gOrder.length];
+        this.setState({ g: n, gPhase: 'checking', gck: 0, card: null, showPass: false, planOff: {}, fixed: false, undoLeft: 0 });
+      } else {
+        const n = uOrder[(uOrder.indexOf(st.u) + 1) % uOrder.length];
+        this.setState({ u: n, uPhase: 'checking', uck: 0, t: 0, pinned: null, ufixed: false });
+      }
+    };
+    const demoLabel = st.tab !== 'update' ? '体检 ' + (gOrder.indexOf(st.g) + 1) + '/3 ' + gLabels[st.g] : '更新 ' + (uOrder.indexOf(st.u) + 1) + '/5 ' + uLabels[st.u];
+
+    const tab = (id, label, n, kind) => ({
+      label, badge: String(n), hasBadge: n > 0,
+      badgeStyle: 'margin-left: 6px; font-size: 11px; color: #fff; border-radius: 9px; padding: 0 7px; background: ' + (kind === 'fail' ? '#bf3a2b' : '#c4532c') + ';',
+      pick: () => this.setState({ tab: id, menu: false }),
+      style: 'min-height: 44px; padding: 0 14px; border: none; background: transparent; font-size: 14px; color: #1f1b16; display: flex; align-items: center; ' +
+        (st.tab === id ? 'font-weight: 600; box-shadow: inset 0 -2px 0 #c4532c;' : 'color: #6b6458;')
+    });
+    const recNew = st.log.length;
+    const tabs = [tab('check', '体检', cv.checkBadge, 'fail'), tab('update', '更新', uv.updateBadge, 'warn'), tab('records', '记录', recNew, 'warn')];
+
+    const close = (msg) => () => { this.setState({ menu: false }); this.say(msg); };
+    const menuItems = [
+      { label: '离线检查', note: '只看本机', click: close('（原型）离线检查：跳过联网项，0.14 秒') },
+      { label: '复制报告', note: '发给别人', click: close('已复制文本报告（不含密钥）') },
+      { label: '打开日志目录', note: '保留 7 天', click: close('（原型）打开 %LOCALAPPDATA%\\ClaudeEnvGuard\\日志\\') }
+    ];
+    let lastText = '';
+    if (st.tab === 'check') lastText = st.gPhase === 'checking' ? '正在检查' : '刚检查 · 4.1 秒';
+    if (st.tab === 'update') lastText = st.uPhase === 'checking' ? '正在查版本' : '刚查过 · 1.9 秒';
+    if (st.tab === 'records') lastText = '共 ' + (st.log.length + 5) + ' 条';
+
+    return Object.assign({}, cv, uv, rv, sv, {
+      isCheck, isUpdate: st.tab === 'update', isRecords: st.tab === 'records', isSettings: st.tab === 'settings',
+      gearStyle: 'min-height: 36px; padding: 0 12px; border-radius: 8px; font-size: 13px; ' + (st.tab === 'settings' ? 'background: #1f1b16; color: #f3efe6; border: 1px solid #1f1b16;' : 'background: #fbf9f4; color: #1f1b16; border: 1px solid #cfc5b1;'),
+      tabs, onCycle, demoLabel, lastText,
+      menuOpen: st.menu, menuItems, toggleMenu: () => this.setState({ menu: !st.menu }),
+      toast: !!st.toast, toastText: st.toast
+    });
+  }
+}
+</script>
+</body>
+</html>
