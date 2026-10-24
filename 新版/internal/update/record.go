@@ -20,6 +20,7 @@ type scriptRecord struct {
 	RecordPath       string           `json:"RecordPath"`
 	Products         []scriptProduct  `json:"Products"`
 	CliInstall       *cliInstall      `json:"CliInstall"`
+	PluginInstall    *pluginInstall   `json:"PluginInstall"`
 	Desktop          *desktopPackage  `json:"Desktop"`
 	Targets          []scriptTarget   `json:"Targets"`
 	Maintenance      *maintenance     `json:"Maintenance"`
@@ -64,6 +65,15 @@ type maintenance struct {
 	FiltersCount int            `json:"FiltersCount"`
 	StepSeconds  orderedSeconds `json:"StepSeconds"`
 	Checks       map[string]int `json:"Checks"`
+}
+
+// pluginInstall 是脚本用 VS Code 命令行装插件的结果（10-24 起）；Problem 非空表示装完核对不通过、已恢复 extensions.json。
+type pluginInstall struct {
+	From    string `json:"From"`
+	To      string `json:"To"`
+	Log     string `json:"Log"`
+	Backup  string `json:"Backup"`
+	Problem string `json:"Problem"`
 }
 
 type afterVersions struct {

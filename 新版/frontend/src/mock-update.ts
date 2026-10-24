@@ -1,6 +1,6 @@
 // 仅开发预览用：模拟 Go 端 internal/update，便于在浏览器里看更新页的每种状态。
 // 网址参数 ?u= 切换：update（默认，有更新）、cli（只有 CLI）、blocked、latest、neterr（下载断了）、fail（安全检查没过）、
-// checkfail（查版本失败）、unsafe（指纹异常）、never（停在没查过）。点「一键更新」会按加速时间走完整个流程。
+// checkfail（查版本失败）、unsafe（指纹异常）、never（停在没查过）、plugin（插件落后，卫士自己装）、vscode（插件落后但 VS Code 开着）。点「一键更新」会按加速时间走完整个流程。
 import type { UHistory, UProduct, UStep, UpdateView } from './types';
 
 const scenario = new URLSearchParams(location.search).get('u') ?? 'update';
@@ -26,6 +26,7 @@ const targets = (unsafe = false) => [
 function products(): UProduct[] {
   if (scenario === 'latest') return [P('desktop', 'Claude Desktop', '3.6556.2.0', '3.6556.2.0'), P('cli', 'Claude Code CLI', '2.1.310', '2.1.310'), P('plugin', 'VS Code 插件', '2.1.310', '2.1.310')];
   if (scenario === 'cli') return [P('desktop', 'Claude Desktop', '3.6556.2.0', '3.6556.2.0'), P('cli', 'Claude Code CLI', '2.1.310', '2.1.311'), P('plugin', 'VS Code 插件', '2.1.310', '2.1.310')];
+  if (scenario === 'plugin' || scenario === 'vscode') return [P('desktop', 'Claude Desktop', '3.6556.2.0', '3.6556.2.0'), P('cli', 'Claude Code CLI', '2.1.310', '2.1.310'), P('plugin', 'VS Code 插件', '2.1.310', '2.1.311')];
   const plugin = scenario === 'blocked' ? P('plugin', 'VS Code 插件', '2.1.310', '2.1.311') : P('plugin', 'VS Code 插件', '2.1.311', '2.1.311');
   return [P('desktop', 'Claude Desktop', '3.6556.2.0', '3.6601.0.0'), P('cli', 'Claude Code CLI', '2.1.310', '2.1.311'), plugin];
 }
@@ -33,16 +34,18 @@ function products(): UProduct[] {
 function plan(): UStep[] {
   const S = (id: string, phase: number, name: string, est: number, extra: Partial<UStep> = {}): UStep => ({ id, phase, name, est, state: 'wait', secs: 0, ...extra });
   const cliOnly = scenario === 'cli';
-  const steps = [S('check', 0, '查三端版本', 3, { detail: '三个版本源同时查；Claude 在运行就停下', state: 'done', secs: 1.9 }), S('cli', 1, 'npm 安装 CLI', 37, { detail: '只用 registry.npmjs.org' })];
-  if (!cliOnly) steps.push(S('download', 1, '下载 Desktop 官方包', 180, { detail: '约 300 MB，经 43867 通道' }), S('inspect', 1, '审核安装包', 8, { detail: '签名、包家族、版本、架构' }));
+  const pluginOnly = scenario === 'plugin' || scenario === 'vscode';
+  const steps = [S('check', 0, '查三端版本', 3, { detail: '三个版本源同时查；Claude 在运行就停下', state: 'done', secs: 1.9 })];
+  if (!pluginOnly) steps.push(S('cli', 1, 'npm 安装 CLI', 37, { detail: '只用 registry.npmjs.org' }));
+  if (pluginOnly) steps.push(S('plugin', 1, 'VS Code 命令行装插件', 30, { detail: '装完核对版本锁定和平台，不对就恢复' }));
+  if (!cliOnly && !pluginOnly) steps.push(S('download', 1, '下载 Desktop 官方包', 180, { detail: '约 300 MB，经 43867 通道' }), S('inspect', 1, '审核安装包', 8, { detail: '签名、包家族、版本、架构' }));
   steps.push(S('hashes', 1, '登记 4 个程序指纹', 3, { detail: '文件变了必须有 Anthropic 签名' }));
   if (cliOnly) return steps;
   steps.push(
     S('uac', 2, '等你在 UAC 弹窗点「是」', 7, { detail: '整次只弹这一次；没看到弹窗就点任务栏上闪烁的盾牌图标' }),
     S('migrate', 3, '插件规则迁移到新目录', 4, { uac: true }),
     S('refresh', 3, 'CLI 指纹刷新', 10, { uac: true }),
-    S('pkgcheck', 3, '复核安装包', 7, { uac: true }),
-    S('install', 3, '安装新版 Desktop', 36, { uac: true }),
+    ...(pluginOnly ? [] : [S('pkgcheck', 3, '复核安装包', 7, { uac: true }), S('install', 3, '安装新版 Desktop', 36, { uac: true })]),
     S('verify', 3, '防护核验', 3, { uac: true, detail: '4 个程序、8 条规则' }),
     S('summary', 3, '只查动过的项', 5, { uac: true, detail: 'Desktop 策略与直连防护；原来全量总检约 18 秒' }),
     S('launch', 3, '启动条件检查', 5, { uac: true }),
@@ -75,6 +78,13 @@ function checked(): UpdateView {
       return { ...v, targets: targets(true), phase: 'unsafe', tier: 'ai', title: '受保护的程序有异常，先别更新', line: 'Claude Desktop 主程序及内置浏览器：文件变了但没有有效的 Anthropic 签名', hint: '卫士不绕过安全检查；AI 只读排查，要改会先问你', error: 'Claude Desktop 主程序及内置浏览器：文件变了但没有有效的 Anthropic 签名', aiText: '（模拟）复制给 AI 的内容' };
     case 'checkfail':
       return { ...base(), phase: 'checkfail', tier: 'retry', title: '没查到新版本', line: '官方入口无响应', hint: '多半是网络问题；连续失败再交给 AI', error: '官方入口无响应；检查 43867 通道。', checkedAt: '16:20', checkSecs: 60.2 };
+    case 'plugin':
+      return { ...v, phase: 'update', needsUac: true, title: '有 1 端可以更新', line: `会更新：VS Code 插件 2.1.310 → 2.1.311；预计约 ${Math.round(estimate)} 秒`, hint: '会弹一次 UAC，那就是确认' };
+    case 'vscode':
+      return {
+        ...v, phase: 'blocked', title: '还差 1 件事要你先做', line: '做完点右边，卫士会重新检查并接着走', hint: '本次没有下载、没有改任何文件',
+        blockers: [{ kind: 'vscode', title: '退出 VS Code', detail: '插件 2.1.310 → 2.1.311 由卫士用 VS Code 命令行自动装，要先关掉全部 VS Code 窗口（现在开着 3 个进程）；卫士不会替你强杀' }],
+      };
     case 'cli':
       return { ...v, phase: 'update', title: '有 1 端可以更新', line: `会更新：Claude Code CLI 2.1.310 → 2.1.311；预计约 ${Math.round(estimate)} 秒`, hint: '不用弹 UAC' };
   }

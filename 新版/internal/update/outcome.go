@@ -63,7 +63,7 @@ func procKind(path string) string {
 
 // Blocker 是要用户先做的一件事。
 type Blocker struct {
-	Kind   string `json:"kind"` // running / plugin / uac / locked
+	Kind   string `json:"kind"` // running / vscode / plugin（旧脚本）/ uac / locked
 	Title  string `json:"title"`
 	Detail string `json:"detail"`
 	Procs  []Proc `json:"procs,omitempty"`
@@ -88,6 +88,13 @@ func runningBlocker(procs []Proc) Blocker {
 		Procs:  procs}
 }
 
+// vscodeBlocker：插件要装新版，VS Code 得先退出（装插件和迁移防护规则都要求它不在跑）。
+func vscodeBlocker(from, to string, n int) Blocker {
+	return Blocker{Kind: "vscode", Title: "退出 VS Code",
+		Detail: fmt.Sprintf("插件 %s → %s 由卫士用 VS Code 命令行自动装，要先关掉全部 VS Code 窗口（现在开着 %d 个进程）；卫士不会替你强杀", from, to, n)}
+}
+
+// pluginBlocker 只给 10-24 之前的旧脚本用：那时插件要在 VS Code 里手点更新。
 func pluginBlocker(from, to string) Blocker {
 	return Blocker{Kind: "plugin", Title: "在 VS Code 里把插件更新到 " + to,
 		Detail: "插件 " + from + " 锁了版本不自动更新，这是唯一要手点的一步；点完退出 VS Code",
@@ -192,6 +199,8 @@ func summarize(dir string, r *scriptRecord) HistoryItem {
 		h.Tone, h.What = "info", "插件落后，停下等手点"
 	case "blocked_running":
 		h.Tone, h.What = "info", "Claude 在运行，停下"
+	case "blocked_vscode":
+		h.Tone, h.What = "info", "VS Code 开着，停下"
 	case "blocked_locked":
 		h.Tone, h.What = "info", "另一份在跑，没执行"
 	case "failed":

@@ -228,6 +228,7 @@ func (r *Runner) doCheck(ctx context.Context) View {
 		return checkFail(v, rec.Error, r.Script)
 	}
 	sit := readSituation(&rec)
+	sit.PluginAuto = sit.Plugin && r.pluginAuto()
 	v.Products = products(&rec)
 	for _, t := range rec.Targets {
 		v.Targets = append(v.Targets, Target{Name: t.Name, State: t.State})
@@ -269,7 +270,11 @@ func (r *Runner) doCheck(ctx context.Context) View {
 		}
 		if sit.Plugin {
 			p := rec.Products[2]
-			blockers = append(blockers, pluginBlocker(p.Installed, p.Latest))
+			if !sit.PluginAuto {
+				blockers = append(blockers, pluginBlocker(p.Installed, p.Latest))
+			} else if n := r.vscodeCount(); n > 0 {
+				blockers = append(blockers, vscodeBlocker(p.Installed, p.Latest, n))
+			}
 		}
 		if len(blockers) > 0 {
 			v.Phase, v.Blockers = "blocked", blockers
@@ -336,7 +341,7 @@ func updateTitle(s situation, ps []Product, est float64) (string, string) {
 	behind := 0
 	var parts []string
 	for _, p := range ps {
-		if p.Behind && p.Key != "plugin" {
+		if p.Behind && (p.Key != "plugin" || s.PluginAuto) {
 			behind++
 			parts = append(parts, p.Name+" "+p.Installed+" → "+p.Latest)
 		}
@@ -375,6 +380,27 @@ func lastUpdateText(dirs []string) string {
 func downloadTotal(root string) float64 {
 	d := downloadProgress(root, 0)
 	return d.TotalMB
+}
+
+// pluginAuto：脚本会不会自己装插件（10-24 起的脚本用 code --install-extension）；旧脚本仍要用户在 VS Code 手点。
+func (r *Runner) pluginAuto() bool {
+	b, err := os.ReadFile(r.Script)
+	return err == nil && strings.Contains(string(b), "--install-extension")
+}
+
+// vscodeCount 数 Code.exe 进程；读不到按 0 算，脚本开始前会再查一次。
+func (r *Runner) vscodeCount() int {
+	ps, err := r.Sys.Processes("Code.exe")
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, p := range ps {
+		if strings.EqualFold(p.Name, "Code.exe") {
+			n++
+		}
+	}
+	return n
 }
 
 func (r *Runner) claudeProcs() []Proc {
@@ -539,6 +565,10 @@ func (r *Runner) finish(v View, rec *scriptRecord, snap snapshot) View {
 			procs = append(procs, Proc{PID: p.ProcessID, Path: p.ExecutablePath, Kind: procKind(p.ExecutablePath)})
 		}
 		v = blocked(v, runningBlocker(procs))
+	case "blocked_vscode":
+		markRest("wait")
+		p := rec.Products[2]
+		v = blocked(v, vscodeBlocker(p.Installed, p.Latest, len(rec.RunningProcesses)))
 	case "plugin_update_needed":
 		markRest("wait")
 		p := rec.Products[2]

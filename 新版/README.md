@@ -92,7 +92,8 @@
 - **查版本用 Go（v2.3.0 起）**：`internal/update/gocheck.go` 做和脚本 `-Action Check` 同样的事——Desktop 官方跳转入口、`registry.npmjs.org`、VS Code 官方市场三个源同时查，只经 Desktop 专用端口；本机版本读 MSIX 包全名、`package.json`、`extensions.json`；4 个程序的指纹同时算，对不上才用 WinVerifyTrust 校验 Anthropic 签名；结果写成同样的 `检查记录.json`。本机约 2 秒（脚本约 3 秒，另加启动 PowerShell）。来源、判定规则、出错原文都照脚本同名函数，**改脚本的查版本逻辑时这里要跟着改**；`ceg update --check --script` 可随时对照。
 - **调用方式**：一键更新在隐藏窗口跑 `-RunDirectory <更新记录-时间> -ChangedOnly`（UAC 内的日常总检只查这次动过的项）；脚本自己会再查一次版本。两个参数不传时脚本行为不变，桌面图标照常可用。
 - **进度从哪来**：`记录.json` 的 `Timing`、`统一维护\进度.log`、下载中的临时文件大小；剩余时间按最近 5 次 `更新记录-*\记录.json` 每步耗时估（样本不足 3 个取最近一次）。
-- **出错分三层**：网络断、下载不完整、超时 → 「重试这一步」（连续失败 2 次升到第三层）；Claude 在运行、插件要手点、UAC 点了否 → 列成待办；签名不对、防护核验不过、没见过的错 → 「复制给 AI 排查」。
+- **插件自动更新（v2.5.0 起）**：插件落后时脚本用 VS Code 命令行 `code --install-extension anthropic.claude-code@<最新版>` 装，归在第 2 步「下载与安装」；装完核对 `extensions.json` 只登记一条、`pinned=true`、`targetPlatform=win32-x64`，不合格就用装之前的备份恢复并报失败；随后在同一次 UAC 里迁移防护规则。VS Code 开着时「要先处理」只列「退出 VS Code」，不强杀。2026-10-24 实测：命令行指定版本装插件（2.1.310 → 2.1.309 → 2.1.310），两项都不变。脚本里没有 `--install-extension` 的旧脚本仍按原来「在 VS Code 点更新」处理。
+- **出错分三层**：网络断、下载不完整、超时 → 「重试这一步」（连续失败 2 次升到第三层）；Claude 或 VS Code 在运行、UAC 点了否 → 列成待办；签名不对、防护核验不过、没见过的错 → 「复制给 AI 排查」。
 - **关窗**：更新进行中关窗会先确认；脚本不跟着窗口停，关掉只是看不到进度。
 - **回退**：见 [更新并入需求.md](../更新并入需求.md) 第 2.1 节；删掉 `internal/update`、`frontend/src/update.*` 和顶栏「更新」页签，其余功能不受影响。
 

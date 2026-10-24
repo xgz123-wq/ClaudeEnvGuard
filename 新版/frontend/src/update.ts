@@ -5,7 +5,7 @@ import { api, errText } from './api';
 import type { UBlocker, UPhase, UProduct, UStep, UpdateView } from './types';
 import { $, $$, esc, toast } from './util';
 
-const PHASES = ['检查', '下载与安装 CLI', '授权', '安装与核验', '完成'];
+const PHASES = ['检查', '下载与安装', '授权', '安装与核验', '完成'];
 
 const state = {
   view: null as UpdateView | null,
@@ -179,7 +179,9 @@ function productCard(v: UpdateView, p: UProduct) {
   let from = p.installed || '—';
   let showTo = p.behind;
   let cls = '';
-  if (p.key === 'plugin' && p.behind && ph === 'blocked') { pill = '要在 VS Code 点更新'; tone = 'info'; }
+  const bk = (k: string) => ph === 'blocked' && (v.blockers ?? []).some((b) => b.kind === k);
+  if (p.key === 'plugin' && p.behind && bk('plugin')) { pill = '要在 VS Code 点更新'; tone = 'info'; }
+  if (p.key === 'plugin' && p.behind && bk('vscode')) { pill = '先退出 VS Code'; tone = 'info'; }
   if (p.key === 'plugin' && !p.behind && (v.targets ?? []).some((t) => t.state === 'moved')) pill = '已在 VS Code 更新';
   if (ph === 'running' && p.behind) { pill = '更新中'; tone = 'info'; }
   if (ph === 'done' && p.behind) {
@@ -187,7 +189,7 @@ function productCard(v: UpdateView, p: UProduct) {
     if (p.installed === p.latest) from = p.latest;
   }
   if (ph === 'failed' && p.behind) {
-    const id = p.key === 'cli' ? 'cli' : p.key === 'desktop' ? 'install' : '';
+    const id = p.key === 'cli' ? 'cli' : p.key === 'desktop' ? 'install' : 'plugin';
     const ok = steps(v).some((s) => s.id === id && s.state === 'done');
     pill = ok ? '已更新' : '没更新'; tone = ok ? 'pass' : 'fail';
   }

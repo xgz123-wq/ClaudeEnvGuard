@@ -19,7 +19,7 @@ type Step struct {
 }
 
 // PhaseNames 是界面上横向 5 步的名字。
-var PhaseNames = []string{"检查", "下载与安装 CLI", "授权", "安装与核验", "完成"}
+var PhaseNames = []string{"检查", "下载与安装", "授权", "安装与核验", "完成"}
 
 // UAC 内各步：进度.log 和 StepSeconds 里的名字 → 步骤 ID。
 var maintSteps = map[string]string{
@@ -35,7 +35,7 @@ var maintSteps = map[string]string{
 
 // 没有历史记录时的预计秒数（取自 10-22 到 10-24 的记录和需求文档实测）。
 var defaultEst = map[string]float64{
-	"check": 3, "cli": 40, "download": 180, "inspect": 8, "hashes": 3, "uac": 7,
+	"check": 3, "cli": 40, "plugin": 30, "download": 180, "inspect": 8, "hashes": 3, "uac": 7,
 	"migrate": 4, "refresh": 10, "pkgcheck": 7, "install": 36, "verify": 3,
 	"summary": 5, "summary-full": 18, "launch": 5, "cleanup": 1,
 }
@@ -44,13 +44,14 @@ var defaultEst = map[string]float64{
 type situation struct {
 	Desktop, Cli, Plugin bool // 哪几端落后
 	Moved                bool // 插件已在 VS Code 更新，换了目录，防护规则要迁移
+	PluginAuto           bool // 插件落后且脚本会用 VS Code 命令行自己装（10-24 起）；装完换目录，同样要迁移
 	GuardChanged         bool // Desktop 或插件程序指纹变了（CLI 同路径变化按签名放行，不算）
 	Unsafe               []string
 	DesktopLatest        string
 }
 
-// NeedsUAC 与脚本的判断一致：Desktop 落后、防护指纹变了、插件换目录，三者之一才弹 UAC。
-func (s situation) NeedsUAC() bool { return s.Desktop || s.GuardChanged || s.Moved }
+// NeedsUAC 与脚本的判断一致：Desktop 落后、防护指纹变了、插件换目录（含脚本这次自己装插件），之一才弹 UAC。
+func (s situation) NeedsUAC() bool { return s.Desktop || s.GuardChanged || s.Moved || s.PluginAuto }
 
 // Any 表示这次一键更新会做点什么。
 func (s situation) Any() bool { return s.Desktop || s.Cli || s.Plugin || s.NeedsUAC() }
@@ -100,6 +101,9 @@ func buildPlan(s situation, est map[string]float64, downloadMB float64, changedO
 	if s.Cli {
 		steps = append(steps, Step{ID: "cli", Phase: 1, Name: "npm 安装 CLI", Detail: "只用 registry.npmjs.org"})
 	}
+	if s.PluginAuto {
+		steps = append(steps, Step{ID: "plugin", Phase: 1, Name: "VS Code 命令行装插件", Detail: "装完核对版本锁定和平台，不对就恢复"})
+	}
 	if s.Desktop {
 		steps = append(steps,
 			Step{ID: "download", Phase: 1, Name: "下载 Desktop 官方包", Detail: "约 " + itoa(int(downloadMB+0.5)) + " MB，经 43867 通道"},
@@ -108,7 +112,7 @@ func buildPlan(s situation, est map[string]float64, downloadMB float64, changedO
 	steps = append(steps, Step{ID: "hashes", Phase: 1, Name: "登记 4 个程序指纹", Detail: "文件变了必须有 Anthropic 签名"})
 	if s.NeedsUAC() {
 		steps = append(steps, Step{ID: "uac", Phase: 2, Name: "等你在 UAC 弹窗点「是」", Detail: "整次只弹这一次；没看到弹窗就点任务栏上闪烁的盾牌图标"})
-		if s.Moved {
+		if s.Moved || s.PluginAuto {
 			steps = append(steps, Step{ID: "migrate", Phase: 3, UAC: true, Name: "插件规则迁移到新目录"})
 		}
 		steps = append(steps, Step{ID: "refresh", Phase: 3, UAC: true, Name: "CLI 指纹刷新"})
@@ -157,6 +161,10 @@ func estimates(dirs []string) map[string]float64 {
 		if t.Has("CLI安装") {
 			add("cli", t.Values["CLI安装"]-prev)
 			prev = t.Values["CLI安装"]
+		}
+		if t.Has("插件安装") {
+			add("plugin", t.Values["插件安装"]-prev)
+			prev = t.Values["插件安装"]
 		}
 		if t.Has("Desktop包就绪") {
 			total := t.Values["Desktop包就绪"] - prev

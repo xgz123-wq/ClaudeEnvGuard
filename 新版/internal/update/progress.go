@@ -142,6 +142,10 @@ func infer(plan []Step, runDir, root string, rec *scriptRecord, lines []string, 
 			if t.Has("CLI安装") {
 				done(i, t.Values["CLI安装"]-prevOf("查版本"))
 			}
+		case "plugin":
+			if t.Has("插件安装") {
+				done(i, t.Values["插件安装"]-prevOf("CLI安装", "查版本"))
+			}
 		case "download":
 			switch {
 			case reused || (t.Has("Desktop包就绪") && rec.Desktop != nil && rec.Desktop.Reused):
@@ -154,7 +158,7 @@ func infer(plan []Step, runDir, root string, rec *scriptRecord, lines []string, 
 			}
 		case "inspect":
 			if t.Has("Desktop包就绪") {
-				secs := t.Values["Desktop包就绪"] - prevOf("CLI安装", "查版本")
+				secs := t.Values["Desktop包就绪"] - prevOf("插件安装", "CLI安装", "查版本")
 				if rec.Desktop != nil {
 					secs -= rec.Desktop.DownloadSeconds
 				}
@@ -162,7 +166,7 @@ func infer(plan []Step, runDir, root string, rec *scriptRecord, lines []string, 
 			}
 		case "hashes":
 			if t.Has("指纹汇总") {
-				done(i, t.Values["指纹汇总"]-prevOf("Desktop包就绪", "CLI安装", "查版本"))
+				done(i, t.Values["指纹汇总"]-prevOf("Desktop包就绪", "插件安装", "CLI安装", "查版本"))
 			}
 		case "uac":
 			if len(pl) > 0 || t.Has("一键更新") {
