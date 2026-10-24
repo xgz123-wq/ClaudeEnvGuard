@@ -1,6 +1,7 @@
 // 仅开发预览用（vite dev，不在 Wails 里时）：模拟后端，便于在浏览器里看各种场景。
 // 场景用网址参数切换：?s=real（默认，读 dev/real.json）、?s=fresh（没配好的新电脑）、?s=split（出口不一致）。
-import type { Report, Result } from './types';
+import type { Report, Result, UpdateView } from './types';
+import { updateMock } from './mock-update';
 
 const files = import.meta.glob('../dev/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 const real = (files['../dev/real.json'] as Report) ?? null;
@@ -54,7 +55,7 @@ const listeners: Record<string, ((d: unknown) => void)[]> = {};
 (window as any).go = {
   main: {
     App: {
-      Init: async () => ({ version: '2.0.0', settings: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, selectedBrowser: 'KK-Claude', regionOverride: '', sharePackageRoot: '', startUrl: 'https://ip.net.coffee/claude/' }, note: '', regions: [{ id: 'us-west', label: '美国西部（洛杉矶）', countryCode: 'US', iana: 'America/Los_Angeles' }], isAdmin: false, defaults: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, startUrl: 'https://ip.net.coffee/claude/' } }),
+      Init: async () => ({ version: '2.1.0', logDir: 'C:\\Users\\x\\AppData\\Local\\ClaudeEnvGuard\\日志', settings: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, selectedBrowser: 'KK-Claude', regionOverride: '', sharePackageRoot: '', startUrl: 'https://ip.net.coffee/claude/' }, note: '', regions: [{ id: 'us-west', label: '美国西部（洛杉矶）', countryCode: 'US', iana: 'America/Los_Angeles' }], isAdmin: false, defaults: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, startUrl: 'https://ip.net.coffee/claude/' } }),
       Check: async () => {
         const full = build();
         const partial = clone(full);
@@ -79,6 +80,7 @@ const listeners: Record<string, ((d: unknown) => void)[]> = {};
       OpenPath: async () => '',
       ReportText: async () => 'report',
       Log: async (m: string) => console.log('[log]', m),
+      ...updateMock((v: UpdateView) => (listeners.update ?? []).forEach((cb) => cb(v))),
     },
   },
 };

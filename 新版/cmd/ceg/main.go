@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/windows"
 
@@ -20,6 +21,7 @@ import (
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/platform"
 	"ClaudeEnvGuard/internal/report"
+	"ClaudeEnvGuard/internal/update"
 	"ClaudeEnvGuard/internal/version"
 )
 
@@ -36,9 +38,14 @@ const usage = `Claude 环境卫士（命令行版） v%s
       还原某次修复；不带 --id 时还原最近一次。
   ceg clean   code|desktop|browser [--browser 名字] --plan|--yes [--json]
       清理登录数据。先用 --plan 看清单，确认后再用 --yes 执行。
+  ceg update  --check [--json]
+      只读：调用桌面「Claude-三端更新」脚本的 -Action Check，列出三端版本、4 个程序指纹和这次会做什么。
+  ceg update  --apply
+      一键更新（同桌面「Claude-三端更新」）：先退出全部 Claude；要动防护时弹一次 UAC。
   ceg version
 
 退出码：0 全部通过；1 有警告或未知；2 有失败；3 工具自身出错。
+update：0 已是最新或更新完成；1 有可更新的或要先处理；2 失败或安全检查没过；3 工具自身出错。
 `
 
 func main() {
@@ -74,6 +81,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdRestore(eng, rest, stdout, stderr, st)
 	case "clean":
 		return cmdClean(eng, rest, stdout, stderr, st)
+	case "update":
+		return cmdUpdate(sys, eng, rest, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, version.Version)
 		return 0
@@ -325,6 +334,146 @@ func cmdClean(eng *engine.Engine, args []string, stdout, stderr io.Writer, st re
 		return 2
 	}
 	return 0
+}
+
+func cmdUpdate(sys platform.OS, eng *engine.Engine, args []string, stdout, stderr io.Writer) int {
+	fs := newFlags("update", stderr)
+	check := fs.Bool("check", false, "只查版本（只读）")
+	apply := fs.Bool("apply", false, "一键更新")
+	asJSON := fs.Bool("json", false, "输出 JSON（只用于 --check）")
+	if err := fs.Parse(args); err != nil {
+		return 3
+	}
+	if *check == *apply {
+		fmt.Fprintln(stderr, "请指定 --check（只读查版本）或 --apply（一键更新），二选一。")
+		return 3
+	}
+	s, _ := eng.Settings()
+	r := update.New(sys, s.SharePackageRoot)
+	ctx, cancel := checkCtx()
+	defer cancel()
+	if !*asJSON {
+		fmt.Fprintln(stderr, "正在查三端版本（三个版本源同时查，约 3 秒）…")
+	}
+	v := r.Check(ctx)
+	if *check {
+		if *asJSON {
+			printJSON(stdout, v)
+		} else {
+			printUpdateView(stdout, v)
+		}
+		return updateExit(v)
+	}
+	printUpdateView(stdout, v)
+	if v.Phase != "update" {
+		return updateExit(v)
+	}
+	fmt.Fprintln(stdout, "\n开始一键更新（脚本在隐藏窗口里跑；要动防护时会弹一次 UAC，那就是确认）…")
+	v, err := r.Start()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 3
+	}
+	fmt.Fprintln(stdout, "记录目录：", v.RunDir)
+	// 每秒读一次记录文件；步骤变了或每 10 秒打一行。Ctrl+C 只停止显示，不会掐断脚本（UAC 里的维护不能半路停）。
+	last, tick := "", 0
+	for v.Phase == "running" {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintln(stdout, "\n已停止显示；更新仍在后台继续，结果看记录目录里的 记录.json。")
+			return 1
+		case <-time.After(time.Second):
+		}
+		v = r.View()
+		tick++
+		if v.Phase == "running" && (v.Title != last || tick%10 == 0) {
+			last = v.Title
+			line := fmt.Sprintf("  [%3.0f%%] %s  %s", v.Percent, v.Title, v.Line)
+			if v.Download != nil {
+				line += fmt.Sprintf("（已下载 %.0f / 约 %.0f MB，%.1f MB/s）", v.Download.MB, v.Download.TotalMB, v.Download.Speed)
+			}
+			fmt.Fprintln(stdout, line)
+		}
+	}
+	fmt.Fprintln(stdout)
+	printUpdateView(stdout, v)
+	return updateExit(v)
+}
+
+func updateExit(v update.View) int {
+	switch v.Phase {
+	case "latest", "done":
+		return 0
+	case "update", "blocked":
+		return 1
+	}
+	return 2
+}
+
+func printUpdateView(w io.Writer, v update.View) {
+	if len(v.Products) > 0 {
+		head := "三端版本"
+		if v.CheckSecs > 0 {
+			head += fmt.Sprintf("（查版本 %.1f 秒）", v.CheckSecs)
+		}
+		fmt.Fprintln(w, head+"：")
+		for _, p := range v.Products {
+			mark := "最新"
+			if p.Behind {
+				mark = "可更新"
+			}
+			fmt.Fprintf(w, "  %-16s 已装 %-12s 最新 %-12s %s\n", p.Name, p.Installed, p.Latest, mark)
+		}
+	}
+	if len(v.Targets) > 0 {
+		fmt.Fprintln(w, "受保护的 4 个程序：")
+		for _, t := range v.Targets {
+			fmt.Fprintf(w, "  %-24s %s\n", t.Name, t.State)
+		}
+	}
+	fmt.Fprintf(w, "结论：%s", v.Title)
+	if v.Line != "" {
+		fmt.Fprintf(w, " —— %s", v.Line)
+	}
+	fmt.Fprintln(w)
+	for _, b := range v.Blockers {
+		fmt.Fprintf(w, "  要先做：%s（%s）\n", b.Title, b.Detail)
+		for _, p := range b.Procs {
+			fmt.Fprintf(w, "    PID %d  %s  %s\n", p.PID, p.Kind, p.Path)
+		}
+	}
+	if v.Phase == "update" {
+		fmt.Fprintln(w, "这次会走：")
+		for _, s := range v.Steps[1:] {
+			where := ""
+			if s.UAC {
+				where = "（UAC 内）"
+			}
+			fmt.Fprintf(w, "  %-4s %s%s  约 %.0f 秒\n", update.PhaseNames[s.Phase], s.Name, where, s.Est)
+		}
+		fmt.Fprintln(w, "执行：ceg update --apply（先退出全部 Claude）")
+	}
+	if v.Hint != "" {
+		fmt.Fprintln(w, "提示：", v.Hint)
+	}
+	if v.Phase == "done" || v.Phase == "failed" {
+		for _, s := range v.Steps {
+			fmt.Fprintf(w, "  %-5s %s  %.1f 秒\n", stepMark(s.State), s.Name, s.Secs)
+		}
+	}
+	if v.Error != "" && v.Error != v.Line {
+		fmt.Fprintln(w, "原因原文：", v.Error)
+	}
+	if v.AIText != "" {
+		fmt.Fprintln(w, "\n可复制给 AI 排查：\n"+v.AIText)
+	}
+	if v.RunDir != "" && v.Phase != "running" {
+		fmt.Fprintln(w, "记录目录：", v.RunDir)
+	}
+}
+
+func stepMark(state string) string {
+	return map[string]string{"done": "完成", "fail": "失败", "skip": "跳过", "wait": "没执行", "run": "进行中"}[state]
 }
 
 // setupConsole 让旧版控制台也能正确显示中文和颜色。

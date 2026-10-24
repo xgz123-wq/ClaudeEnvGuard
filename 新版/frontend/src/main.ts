@@ -2,15 +2,18 @@ import './style.css';
 import { api, errText } from './api';
 import { closeModal, modalOpen, openClean, openFix, openRestore, openSettings } from './modals';
 import { renderRoute } from './route';
+import { mountUpdate, runUpdateCheck, updateBadge, updateLastText } from './update';
 import type { Group, InitState, Report, Result, Status } from './types';
 import { $, $$, esc, kindHint, kindLabel, statusLabel, toast } from './util';
 
 type Tab = Group;
+type Page = 'check' | 'update';
 
 const state = {
   init: null as InitState | null,
   report: null as Report | null,
   checking: false,
+  page: 'check' as Page,
   tab: 'overview' as Tab,
   expanded: new Set<string>(),
   touched: new Set<string>(), // 用户手动展开/收起过的项，不再自动改
@@ -30,63 +33,135 @@ const rank = (s: Status) => ({ fail: 4, warn: 3, unknown: 2, pass: 1, na: 0 }[s]
 
 // ---------------------------------------------------------------- 骨架
 
+// 顶栏两个页签：体检（沿用 v2.0 的内容，阶段 2 再改版）、更新（internal/update）。「记录」页签阶段 2 加。
 function shell() {
   document.querySelector('#app')!.innerHTML = `
   <div class="shell">
-    <header class="top">
-      <div class="brand">
+    <header class="topbar">
+      <div class="tb-left">
         <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 4.5 7v8.2c0 7.1 4.8 12.4 11.5 14.3 6.7-1.9 11.5-7.2 11.5-14.3V7z" class="m-shield"/><path d="m10.5 16.2 3.8 3.8 7.4-8" class="m-tick"/></svg>
-        <div><div class="name">Claude 环境卫士</div><div class="ver" id="ver">检查 · 修复 · 还原</div></div>
+        <span class="name" title="" id="ver">Claude 环境卫士</span>
+        <nav class="ptabs" role="tablist">
+          <button class="ptab" role="tab" data-page="check">体检<span class="pbadge" id="badge-check"></span></button>
+          <button class="ptab" role="tab" data-page="update">更新<span class="pbadge" id="badge-update"></span></button>
+        </nav>
       </div>
-      <div class="top-actions">
-        <label class="toggle" title="只检查本机配置，不经代理联网测出口"><input type="checkbox" id="offline"><span class="track"></span>离线检查</label>
-        <button class="btn ghost small" id="btn-copy" title="复制完整文本报告，发给别人帮忙排查">复制报告</button>
-        <button class="btn ghost small" id="btn-restore">还原</button>
-        <button class="btn ghost small" id="btn-settings">设置</button>
-        <button class="btn" id="btn-check"><span class="spinner"></span><span class="lbl">重新检查</span></button>
-        <button class="btn primary" id="btn-fix">一键修复<span class="count" id="fix-count"></span></button>
+      <div class="tb-right">
+        <span class="last" id="last"></span>
+        <button class="btn ghost small" id="btn-settings">⚙ 设置</button>
+        <button class="btn ghost small more" id="btn-more" aria-label="更多" aria-haspopup="menu">⋯</button>
+        <div class="menu" id="menu" role="menu" hidden>
+          <button role="menuitem" data-m="offline"><span>离线检查</span><em>只看本机</em></button>
+          <button role="menuitem" data-m="copy"><span>复制报告</span><em>发给别人</em></button>
+          <button role="menuitem" data-m="restore"><span>还原修复…</span><em>撤销一键修复</em></button>
+          <button role="menuitem" data-m="logs"><span>打开日志目录</span><em>保留 7 天</em></button>
+        </div>
       </div>
     </header>
-    <section class="hero">
-      <div class="verdict" id="verdict"></div>
-      <div class="route-card"><div class="card-title">线路 <span>每个入口经自己的端口实测出口</span></div><div id="route"></div></div>
-    </section>
-    <section class="target-bar" id="target"></section>
-    <main class="body">
-      <nav class="rail" id="rail" role="tablist"></nav>
-      <section class="panel" id="panel" role="tabpanel"></section>
-    </main>
-    <footer class="status-line" id="status"></footer>
+    <div class="page page-check" id="page-check">
+      <section class="hero">
+        <div class="verdict" id="verdict"></div>
+        <div class="route-card"><div class="card-title">线路 <span>每个入口经自己的端口实测出口</span></div><div id="route"></div></div>
+      </section>
+      <section class="target-bar" id="target"></section>
+      <main class="body">
+        <nav class="rail" id="rail" role="tablist"></nav>
+        <section class="panel" id="panel" role="tabpanel"></section>
+      </main>
+      <footer class="status-line" id="status"></footer>
+    </div>
+    <div class="page page-update" id="page-update" hidden></div>
   </div>`;
-  $('#btn-check')!.addEventListener('click', () => (state.checking ? api.cancel() : runCheck()));
-  $('#btn-fix')!.addEventListener('click', () => openFix(runCheck));
-  $('#btn-restore')!.addEventListener('click', () => openRestore(runCheck));
-  $('#btn-settings')!.addEventListener('click', () => state.init && openSettings(state.init, (s) => { state.init!.settings = s; runCheck(); }));
-  $('#btn-copy')!.addEventListener('click', async () => {
-    const t = await api.reportText();
-    if (!t) return toast('还没有完整的检查结果', 'err');
-    await api.copy(t);
-    toast('已复制文本报告（不含任何密钥）', 'ok');
-  });
-  $<HTMLInputElement>('#offline')!.addEventListener('change', (e) => {
-    state.offline = (e.target as HTMLInputElement).checked;
-    runCheck();
-  });
+  $$('.ptab').forEach((b) => b.addEventListener('click', () => showPage(b.dataset.page as Page)));
+  $('#btn-settings')!.addEventListener('click', () => state.init && openSettings(state.init, (s) => { state.init!.settings = s; showPage('check'); runCheck(); }));
+  const menu = $('#menu')!;
+  $('#btn-more')!.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  document.addEventListener('click', (e) => { if (!menu.contains(e.target as Node)) menu.hidden = true; });
+  $$('[data-m]', menu).forEach((b) => b.addEventListener('click', async () => {
+    menu.hidden = true;
+    switch (b.dataset.m) {
+      case 'offline':
+        showPage('check');
+        runCheck(true);
+        break;
+      case 'copy': {
+        const t = await api.reportText();
+        if (!t) return toast('还没有完整的检查结果', 'err');
+        await api.copy(t);
+        toast('已复制文本报告（不含任何密钥）', 'ok');
+        break;
+      }
+      case 'restore':
+        openRestore(runCheck);
+        break;
+      case 'logs': {
+        const err = state.init?.logDir ? await api.openPath(state.init.logDir) : '还不知道日志目录';
+        if (err) toast('打不开日志目录：' + err, 'err');
+        break;
+      }
+    }
+  }));
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modalOpen()) closeModal();
-    if (e.key === 'F5') { e.preventDefault(); if (!state.checking && !modalOpen()) runCheck(); }
+    if (e.key === 'Escape') { if (modalOpen()) closeModal(); menu.hidden = true; }
+    if (e.key === 'F5') {
+      e.preventDefault();
+      if (modalOpen()) return;
+      if (state.page === 'update') runUpdateCheck();
+      else if (!state.checking) runCheck();
+    }
   });
+  mountUpdate($('#page-update')!, renderTabs);
+}
+
+function showPage(p: Page) {
+  state.page = p;
+  $('#page-check')!.hidden = p !== 'check';
+  $('#page-update')!.hidden = p !== 'update';
+  renderTabs();
+}
+
+function todoCount(): { n: number; fail: boolean } {
+  const rep = state.report;
+  if (!rep?.final) return { n: 0, fail: false };
+  const todo = (rep.results ?? []).filter((r) => !r.advanced && !r.pending && (r.status === 'fail' || r.status === 'warn'));
+  return { n: todo.length, fail: todo.some((r) => r.status === 'fail') };
+}
+
+function renderTabs() {
+  $$('.ptab').forEach((b) => {
+    const on = b.dataset.page === state.page;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  });
+  const t = todoCount();
+  const bc = $('#badge-check')!;
+  bc.textContent = t.n ? String(t.n) : '';
+  bc.className = 'pbadge ' + (t.fail ? 'fail' : 'warn');
+  const n = updateBadge();
+  $('#badge-update')!.textContent = n ? String(n) : '';
+  let last = '';
+  if (state.page === 'update') last = updateLastText();
+  else if (state.checking) last = '正在检查';
+  else if (state.report?.final) {
+    const at = new Date(state.report.startedAt);
+    const hm = isNaN(at.getTime()) ? '' : at.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    last = `${hm} 检查 · ${(state.report.durationMs / 1000).toFixed(1)} 秒`;
+  }
+  $('#last')!.textContent = last;
 }
 
 // ---------------------------------------------------------------- 检查
 
-async function runCheck() {
+let firstCheck = true;
+
+async function runCheck(offline = false) {
   if (state.checking) return;
   state.checking = true;
+  state.offline = offline;
   renderTop();
   try {
     const browser = state.report?.selectedBrowser ?? '';
-    const rep = await api.check(state.offline, browser);
+    const rep = await api.check(offline, browser);
     applyReport(rep);
     api.log(`结果已显示：${rep.summary?.headline ?? ''}（${rep.results?.length ?? 0} 项）`);
   } catch (e) {
@@ -94,6 +169,11 @@ async function runCheck() {
   } finally {
     state.checking = false;
     render();
+    // 打开卫士：体检完成后在后台查一次三端版本（需求文档第 3 节「打开卫士就查」）
+    if (firstCheck) {
+      firstCheck = false;
+      runUpdateCheck();
+    }
   }
 }
 
@@ -110,13 +190,14 @@ function applyReport(rep: Report) {
 // ---------------------------------------------------------------- 渲染
 
 function render() {
-  renderTop();
   renderVerdict();
+  renderTop();
   $('#route')!.innerHTML = renderRoute(state.report, ports());
   renderTarget();
   renderRail();
   renderPanel();
   renderStatus();
+  renderTabs();
 }
 
 function ports(): Record<string, number> {
@@ -131,7 +212,7 @@ function renderTop() {
   const n = state.report?.final ? state.report.summary.fixable : 0;
   $('#fix-count')!.textContent = n ? String(n) : '';
   $<HTMLButtonElement>('#btn-fix')!.disabled = state.checking || !state.report?.final;
-  $<HTMLInputElement>('#offline')!.checked = state.offline;
+  renderTabs();
 }
 
 function stampText(rep: Report | null) {
@@ -163,8 +244,17 @@ function renderVerdict() {
     <div class="stamp ${st.cls}"><span>${st.big}</span></div>
     <div class="v-main">
       <div class="headline">${esc(rep?.final ? s!.headline : st.small)}</div>
-      ${next}${counters}${notes}
+      ${next}
+      <div class="v-foot">${counters}
+        <div class="v-actions">
+          <button class="btn" id="btn-check"><span class="spinner"></span><span class="lbl">重新检查</span></button>
+          <button class="btn primary" id="btn-fix">一键修复<span class="count" id="fix-count"></span></button>
+        </div>
+      </div>${notes}
     </div>`;
+  // 原来在顶栏的两个按钮挪进结论卡片：顶栏改成页签后，它们只属于体检页
+  $('#btn-check')!.addEventListener('click', () => (state.checking ? api.cancel() : runCheck()));
+  $('#btn-fix')!.addEventListener('click', () => openFix(runCheck));
 }
 
 function renderTarget() {
@@ -325,7 +415,7 @@ function bindPanel(panel: HTMLElement) {
 function renderStatus() {
   const rep = state.report;
   const v = state.init?.version ? 'v' + state.init.version : '';
-  $('#ver')!.textContent = `${v} · 检查 · 修复 · 还原${state.init?.isAdmin ? ' · 管理员' : ''}`;
+  $('#ver')!.title = `${v} · 检查 · 修复 · 还原 · 更新${state.init?.isAdmin ? ' · 管理员' : ''}`;
   if (!rep) {
     $('#status')!.innerHTML = `<span>${state.init?.note ? esc(state.init.note) : '启动检查…'}</span>`;
     return;

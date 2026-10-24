@@ -2,7 +2,7 @@
 import * as App from '../wailsjs/go/main/App';
 import { EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
 import type {
-  ApplyResult, BackupInfo, CleanPlan, CleanResult, FixPlan, InitState, Report, Settings,
+  ApplyResult, BackupInfo, CleanPlan, CleanResult, FixPlan, InitState, Report, Settings, UpdateView,
 } from './types';
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -43,6 +43,13 @@ export const api = {
   log: (msg: string) => { try { App.Log(msg); } catch { /* 日志失败不影响界面 */ } },
   onReport: (fn: (r: Report) => void) => EventsOn('report', fn),
   copy: (text: string) => ClipboardSetText(text),
+  // 更新页：查版本只读；开始更新后 Go 端每秒推送事件 "update"
+  updateView: () => App.UpdateView() as unknown as Promise<UpdateView>,
+  updateCheck: () => App.UpdateCheck() as unknown as Promise<UpdateView>,
+  updateStart: () => App.UpdateStart() as unknown as Promise<UpdateView>,
+  updateRetry: () => App.UpdateRetry() as unknown as Promise<UpdateView>,
+  updateOpenPlugin: () => App.UpdateOpenPlugin() as Promise<string>,
+  onUpdate: (fn: (v: UpdateView) => void) => EventsOn('update', fn),
 };
 
 export { errText };

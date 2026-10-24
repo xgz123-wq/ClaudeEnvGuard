@@ -78,24 +78,52 @@ input, select { font: inherit; color: var(--ink); user-select: text; }
 
 .shell {
   height: 100vh;
-  display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
+  display: flex; flex-direction: column;
   max-width: 1400px;
   margin: 0 auto;
 }
+.page { flex: 1; min-height: 0; }
+.page[hidden] { display: none; }
+.page-check { display: grid; grid-template-rows: auto auto 1fr auto; }
 
-.top {
-  display: flex; align-items: center; gap: 16px;
-  padding: 14px 24px 12px;
-  border-bottom: 1px solid var(--rule);
+/* 顶栏：品牌 + 「体检 / 更新」页签（阶段 2 加「记录」）+ 上次检查时间、设置、更多 */
+.topbar {
+  position: relative; flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 20px; min-height: 48px;
+  background: var(--card-2); border-bottom: 1px solid var(--rule);
 }
-.brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
-.mark { width: 34px; height: 34px; }
+.tb-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tb-right { display: flex; align-items: center; gap: 8px; }
+.mark { width: 24px; height: 24px; flex: none; }
 .m-shield { fill: var(--accent); }
 .m-tick { fill: none; stroke: var(--card); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-.name { font: 600 19px/1.1 var(--font-display); letter-spacing: .02em; }
-.ver { color: var(--ink-3); font-size: 12px; margin-top: 3px; }
-.top-actions { display: flex; align-items: center; gap: 8px; }
+.name { font: 600 15px/1.1 var(--font-display); letter-spacing: .02em; padding-right: 14px; white-space: nowrap; }
+.ptabs { display: flex; align-items: stretch; align-self: stretch; }
+.ptab {
+  display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 16px;
+  border: 0; background: transparent; cursor: pointer; font-size: 14px; color: var(--ink-3);
+  box-shadow: inset 0 -2px 0 transparent; transition: color .15s, box-shadow .15s;
+}
+.ptab:hover { color: var(--ink); }
+.ptab.on { color: var(--ink); font-weight: 650; box-shadow: inset 0 -2px 0 var(--accent); }
+.ptab:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+.pbadge:not(:empty) { font: 700 11px/18px var(--mono); color: #fff; border-radius: 9px; padding: 0 7px; background: var(--accent); }
+.pbadge.fail:not(:empty) { background: var(--fail); }
+.last { font-size: 12px; color: var(--ink-2); margin-right: 4px; white-space: nowrap; }
+.btn.more { width: 40px; padding: 0; justify-content: center; font-size: 16px; }
+.menu {
+  position: absolute; right: 20px; top: 46px; z-index: 30; width: 240px; padding: 6px;
+  display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--rule-2); border-radius: 10px;
+  box-shadow: 0 12px 28px -12px rgba(31, 27, 22, .35);
+}
+.menu[hidden] { display: none; }
+.menu button {
+  display: flex; justify-content: space-between; align-items: center; min-height: 38px; padding: 0 12px;
+  border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-size: 13px; text-align: left;
+}
+.menu button:hover { background: var(--paper-2); }
+.menu em { font-style: normal; font-size: 12px; color: var(--ink-3); }
 
 /* ---------------------------------------------------------------- 按钮 */
 
@@ -188,7 +216,9 @@ input, select { font: inherit; color: var(--ink); user-select: text; }
   display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent-2); font-size: 12px; font-weight: 700;
 }
-.counters { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+.v-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-top: 10px; }
+.v-actions { display: flex; gap: 8px; margin-left: auto; }
+.counters { display: flex; gap: 14px; flex-wrap: wrap; }
 .ct { color: var(--ink-3); font-size: 12px; display: inline-flex; align-items: baseline; gap: 5px; }
 .ct b { font: 700 17px/1 var(--mono); color: var(--ink-2); }
 .ct.pass b { color: var(--pass); }
@@ -469,7 +499,7 @@ h3.sec:first-of-type { margin-top: 4px; }
 @media (max-width: 1180px) {
   .hero { grid-template-columns: 1fr; }
   .route-card { justify-self: start; }
-  .shell { grid-template-rows: auto auto auto 1fr auto; }
+  .page-check { grid-template-rows: auto auto 1fr auto; }
 }
 @media (max-width: 1180px) and (max-height: 900px) {
   .hero { grid-template-columns: minmax(300px, 1fr) 600px; }

@@ -96,4 +96,23 @@ export interface Settings {
   selectedBrowser: string; regionOverride: string; sharePackageRoot: string; startUrl: string;
 }
 export interface RegionChoice { id: string; label: string; countryCode: string; iana: string }
-export interface InitState { version: string; settings: Settings; note: string; regions: RegionChoice[]; isAdmin: boolean; defaults: Settings }
+export interface InitState { version: string; settings: Settings; note: string; regions: RegionChoice[]; isAdmin: boolean; logDir?: string; defaults: Settings }
+
+// ---------------------------------------------------------------- 更新页（Go 端 internal/update.View）
+
+export type UPhase = 'never' | 'checking' | 'checkfail' | 'latest' | 'update' | 'blocked' | 'unsafe' | 'running' | 'done' | 'failed';
+export type UStepState = 'wait' | 'run' | 'done' | 'fail' | 'skip';
+export interface UProduct { key: string; name: string; installed: string; latest: string; behind: boolean }
+export interface UTarget { name: string; state: string }
+export interface UStep { id: string; phase: number; name: string; detail?: string; uac?: boolean; est: number; state: UStepState; secs: number }
+export interface UProc { pid: number; path: string; kind: string }
+export interface UBlocker { kind: string; title: string; detail: string; procs?: UProc[] | null; link?: boolean }
+export interface UDownload { mb: number; totalMb: number; speed: number }
+export interface UHistory { at: string; status: string; tone: 'pass' | 'info' | 'fail'; what: string; seconds: number; dir: string }
+export interface UpdateView {
+  phase: UPhase; title: string; line: string; hint: string; tier?: 'retry' | 'user' | 'ai';
+  products: UProduct[] | null; targets?: UTarget[] | null; steps: UStep[] | null; blockers?: UBlocker[] | null;
+  download?: UDownload | null; needsUac: boolean; elapsed: number; remaining: number; percent: number; estimate: number;
+  error?: string; failedStep?: string; runDir?: string; aiText?: string; checkedAt?: string; checkSecs?: number;
+  history: UHistory[] | null; script: string;
+}

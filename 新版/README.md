@@ -9,8 +9,9 @@
 | 场景 | 做法 |
 |---|---|
 | 日常体检 | 双击桌面「Claude 环境卫士」，打开即自动检查，约 5 秒出完整结果 |
-| 有没配好的项 | 点右上角「一键修复」，看清每一处改动后勾选执行；需要管理员的项只弹一次 UAC |
-| 修错了 / 想撤销 | 点「还原」，选一次修复整次撤销 |
+| 有没配好的项 | 点结论卡片里的「一键修复」，看清每一处改动后勾选执行；需要管理员的项只弹一次 UAC |
+| 修错了 / 想撤销 | 右上角「⋯ → 还原修复…」，选一次修复整次撤销 |
+| 更新 Claude 三端 | 切到「更新」页：打开卫士、体检完成后自动查一次版本；有更新时先退出全部 Claude，再点「一键更新」（要动防护时弹一次 UAC，那就是确认）。和桌面「Claude-三端更新」调同一个脚本、记录放同一个目录，见下面「更新页」 |
 | 换账号 / 重新登录 | 在对应页签点「清理登录…」，先列清单、确认后才删 |
 | 命令行或给 AI 用 | `ceg check`、`ceg fix --plan`，见下表 |
 
@@ -27,8 +28,10 @@
 | `ceg fix --apply --items sys.timezone,cli.proxy` | 执行指定修复 |
 | `ceg restore [--list] [--id 备份编号]` | 还原某次修复，不带 `--id` 还原最近一次 |
 | `ceg clean code\|desktop\|browser --plan` / `--yes` | 清理登录数据：先看清单，再确认执行 |
+| `ceg update --check [--json]` | 只读：查三端版本、4 个程序指纹和这次会做什么 |
+| `ceg update --apply` | 一键更新（同桌面「Claude-三端更新」）；先退出全部 Claude |
 
-- **退出码**：0 全部通过；1 有警告或未知；2 有失败；3 工具自身出错。
+- **退出码**：0 全部通过；1 有警告或未知；2 有失败；3 工具自身出错。`update`：0 已是最新或更新完成；1 有可更新的或要先处理；2 失败或安全检查没过。
 - **JSON**：`--json` 输出与图形界面同一份数据结构（`internal/model`）。
 
 ## 检查项
@@ -76,6 +79,15 @@
 - **提权**：需要管理员的动作交给同一个 exe 的提权子进程执行，请求文件只接受本工具备份目录，且每一步都要通过白名单校验（只允许改 Claude 策略、时区、IPv6、指定环境变量、指定防火墙规则）。
 - **清理**：只删白名单内的登录和缓存数据；目标程序在运行时拒绝；执行前重新确认进程状态；登录凭据不留备份。
 
+## 更新页（v2.1.0 起）
+
+- **只套界面**：更新仍由 `AI应用开发\docs\配置\Claude环境\Desktop防护\更新三端Claude.ps1` 执行（找不到时依次找设置里的分享包目录、`桌面\Claude环境分享版`）；卫士只调用它、读它写的记录文件，不下载、不安装、不改防护。
+- **调用方式**：查版本 `-Action Check -RunDirectory <查版本记录目录>`（只读）；一键更新在隐藏窗口跑 `-RunDirectory <更新记录-时间> -ChangedOnly`（UAC 内的日常总检只查这次动过的项）。两个参数不传时脚本行为不变，桌面图标照常可用。
+- **进度从哪来**：`记录.json` 的 `Timing`、`统一维护\进度.log`、下载中的临时文件大小；剩余时间按最近 5 次 `更新记录-*\记录.json` 每步耗时估（样本不足 3 个取最近一次）。
+- **出错分三层**：网络断、下载不完整、超时 → 「重试这一步」（连续失败 2 次升到第三层）；Claude 在运行、插件要手点、UAC 点了否 → 列成待办；签名不对、防护核验不过、没见过的错 → 「复制给 AI 排查」。
+- **关窗**：更新进行中关窗会先确认；脚本不跟着窗口停，关掉只是看不到进度。
+- **回退**：见 [更新并入需求.md](../更新并入需求.md) 第 2.1 节；删掉 `internal/update`、`frontend/src/update.*` 和顶栏「更新」页签，其余功能不受影响。
+
 ## 数据位置
 
 | 内容 | 位置 |
@@ -83,6 +95,8 @@
 | 设置 | `%LOCALAPPDATA%\ClaudeEnvGuard\设置.json` |
 | 修复备份 | `%LOCALAPPDATA%\ClaudeEnvGuard\备份\<时间>\`（`manifest.json` + 原文件副本） |
 | 运行日志 | `%LOCALAPPDATA%\ClaudeEnvGuard\日志\yyyyMMdd.log`，保留 7 天 |
+| 查版本记录 | `%LOCALAPPDATA%\ClaudeEnvGuard\更新检查\检查记录.json`，每次覆盖 |
+| 更新记录 | `%LOCALAPPDATA%\ClaudeNetworkGuard\更新记录-<时间>\`（脚本写，和桌面图标共用） |
 | 界面缓存 | `%APPDATA%\ClaudeEnvGuard.exe\`（WebView2） |
 
 ## 开发
@@ -92,10 +106,10 @@
 | 测试 + 打包 | `pwsh -File 打包.ps1`（加 `-Deploy` 复制到上一级目录） |
 | 只跑测试 | `go test ./...` |
 | 真机只读测速 | `$env:CEG_REAL=1; go test ./internal/facts -run TestReal -v` |
-| 界面预览（模拟数据） | `cd frontend; npm run dev`，地址加 `?s=real` / `?s=fresh` / `?s=split` 切换场景（`dev/*.json` 由 `ceg check --json` 生成，不入库） |
+| 界面预览（模拟数据） | `cd frontend; npm run dev`，地址加 `?s=real` / `?s=fresh` / `?s=split` 切换体检场景，`?u=update` / `cli` / `blocked` / `latest` / `neterr` / `fail` / `checkfail` / `unsafe` / `never` 切换更新页场景（`dev/*.json` 由 `ceg check --json` 生成，不入库） |
 
 - **开发规范**（分支、版本号、上线步骤）：见上级目录 [README.md](../README.md)。
-- **结构**：`internal/facts` 收集现场（只读）→ `internal/checks` 纯函数判定 → `internal/fixes` 计划/执行/还原 → `internal/engine` 串起来；`app.go` + `frontend/` 是界面，`cmd/ceg` 是命令行。所有系统调用都在 `internal/platform` 的 `OS` 接口后面，测试用 `Fake`。
+- **结构**：`internal/facts` 收集现场（只读）→ `internal/checks` 纯函数判定 → `internal/fixes` 计划/执行/还原 → `internal/engine` 串起来；`internal/update` 是更新页（只调三端更新脚本、读它写的记录）；`app.go` + `frontend/` 是界面，`cmd/ceg` 是命令行。所有系统调用都在 `internal/platform` 的 `OS` 接口后面，测试用 `Fake`。
 - **工具链**：Go 1.27（`%LOCALAPPDATA%\Programs\go`）、Wails v2.14、Node 24。不要用 conda 的 python，也不需要 Python。
 
 ## 已知限制

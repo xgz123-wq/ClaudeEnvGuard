@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -13,6 +14,7 @@ import (
 	"ClaudeEnvGuard/internal/logx"
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/report"
+	"ClaudeEnvGuard/internal/update"
 	"ClaudeEnvGuard/internal/version"
 )
 
@@ -23,11 +25,13 @@ type App struct {
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	last   model.Report
+	upd    *update.Runner
 }
 
 // NewApp 创建 App。
 func NewApp(eng *engine.Engine) *App {
-	return &App{eng: eng}
+	s, _ := eng.Settings()
+	return &App{eng: eng, upd: update.New(eng.Sys, s.SharePackageRoot)}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -41,13 +45,14 @@ type InitState struct {
 	Note     string             `json:"note"`
 	Regions  []geo.RegionChoice `json:"regions"`
 	IsAdmin  bool               `json:"isAdmin"`
+	LogDir   string             `json:"logDir"`
 	Defaults appconfig.Settings `json:"defaults"`
 }
 
 // Init 返回版本、设置和可选地区。
 func (a *App) Init() InitState {
 	s, note := a.eng.Settings()
-	return InitState{Version: version.Version, Settings: s, Note: note, Regions: geo.Choices, IsAdmin: a.eng.Sys.IsAdmin(), Defaults: appconfig.Defaults()}
+	return InitState{Version: version.Version, Settings: s, Note: note, Regions: geo.Choices, IsAdmin: a.eng.Sys.IsAdmin(), LogDir: logx.Dir(), Defaults: appconfig.Defaults()}
 }
 
 // Check 跑一次检查。本地阶段完成后通过事件 "report" 推送一份未完成报告，最终结果作为返回值。
@@ -171,4 +176,81 @@ func (a *App) ReportText() string {
 		return ""
 	}
 	return report.Report(a.last, report.Style{}, true)
+}
+
+// ---------------------------------------------------------------- 更新页（internal/update，只调用三端更新脚本、读它写的记录）
+
+// UpdateView 返回更新页当前状态（不跑脚本）。
+func (a *App) UpdateView() update.View {
+	return a.upd.View()
+}
+
+// UpdateCheck 跑一次 -Action Check（只读）。打开卫士、体检完成后界面会自动调一次。
+func (a *App) UpdateCheck() update.View {
+	logx.Printf("界面发起查三端版本")
+	return a.upd.Check(a.ctx)
+}
+
+// UpdateStart 开始一键更新；进度通过事件 "update" 每秒推送，结束时把窗口弹回来。
+func (a *App) UpdateStart() update.View {
+	v, err := a.upd.Start()
+	if err != nil {
+		logx.Printf("更新：没有开始：%v", err)
+		return v
+	}
+	a.watchUpdate()
+	return v
+}
+
+// UpdateRetry 是失败后「重试这一步」：重新查一次再开始，已完成的部分脚本会复用。
+func (a *App) UpdateRetry() update.View {
+	v, err := a.upd.Retry(a.ctx)
+	if err != nil {
+		logx.Printf("更新：重试没有开始：%v", err)
+		return v
+	}
+	if v.Phase == "running" {
+		a.watchUpdate()
+	}
+	return v
+}
+
+// UpdateOpenPlugin 打开 VS Code 的 Claude Code 插件页。
+func (a *App) UpdateOpenPlugin() string {
+	if err := a.upd.OpenPluginPage(); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// watchUpdate 每秒把进度推给界面；用后台协程推而不让界面轮询，窗口最小化时定时器会被浏览器节流。
+func (a *App) watchUpdate() {
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			v := a.upd.View()
+			runtime.EventsEmit(a.ctx, "update", v)
+			if v.Phase != "running" {
+				runtime.WindowUnminimise(a.ctx)
+				runtime.WindowShow(a.ctx)
+				return
+			}
+		}
+	}()
+}
+
+// beforeClose 在更新进行中关窗时先确认：脚本不会跟着窗口停下，关掉后只是看不到进度。
+func (a *App) beforeClose(ctx context.Context) bool {
+	if !a.upd.Running() {
+		return false
+	}
+	res, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		Type:    runtime.QuestionDialog,
+		Title:   "更新还在进行",
+		Message: "关掉窗口不会停下更新：脚本会在后台跑完，只是看不到进度。\n结果在 %LOCALAPPDATA%\\ClaudeNetworkGuard\\更新记录-<时间>\\记录.json。\n\n确定要关闭吗？",
+	})
+	if err != nil {
+		return true
+	}
+	return res != "Yes" && res != "是"
 }

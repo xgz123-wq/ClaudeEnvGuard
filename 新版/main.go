@@ -54,6 +54,7 @@ func main() {
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 244, G: 241, B: 234, A: 1},
 		OnStartup:        app.startup,
+		OnBeforeClose:    app.beforeClose,
 		Bind:             []interface{}{app},
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "ClaudeEnvGuard-7f3c2a9e-single",
