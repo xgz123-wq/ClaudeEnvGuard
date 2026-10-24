@@ -112,6 +112,24 @@ const listeners: Record<string, ((d: unknown) => void)[]> = {};
       Restore: async () => ({ ok: true, message: '已全部还原。', outcomes: [{ ok: true, message: '已还原：region_set en-US' }] }),
       RestoreItems: async (id: string, items: string[]) => { await sleep(700); return mockRestore(id, items); },
       Records: async () => JSON.parse(JSON.stringify(records)).sort((a: LogRecord, b: LogRecord) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)),
+      DeepCheck: async () => {
+        await sleep(2500);
+        const items = [
+          { status: 'PASS', item: 'Rule / TUN / Claude 规则', evidence: '基础验证 18/18；Clash 配置语法通过' },
+          { status: 'PASS', item: '国内连通', evidence: '飞书 HTTP 200' },
+          { status: 'PASS', item: 'ACCOUNT-US', evidence: '当前节点：美国 01；43866 出口：198.51.x.x' },
+          { status: 'PASS', item: 'DNS 防旁路', evidence: 'strict-route=true；UDP/TCP 53 劫持已开启' },
+          { status: 'WARN', item: 'Claude Desktop 自动更新', evidence: '策略没写 disableAutoUpdates（示例）' },
+          { status: 'PASS', item: 'Claude Desktop / Code 直连防护', evidence: 'Desktop=3.6556.2.0；目标文件 4/4；8 条精确阻断规则有管理员 Verify' },
+          { status: 'MANUAL', item: '网页最终验收', evidence: '专用 Chrome / Desktop 内置浏览器分别确认：Claude IP、DNS、WebRTC、IPv6、语言和时区全绿' },
+        ];
+        return { at: '17:40', secs: 15.2, ok: true, pass: 5, warn: 1, fail: 0, manual: 1, items, script: 'x', path: L + '\\ClaudeEnvGuard\\深度总检\\结果.json', summary: '日常运行检查通过；有 1 个防护提醒' };
+      },
+      LaunchDesktopEnglish: async () => {
+        await sleep(1200);
+        return { ok: false, started: false, script: 'x', message: '请先完全退出 Claude Desktop，再使用这个入口。已有进程不会重新加载语言参数。',
+          lines: ['[PASS] 固定代理：HKLM 策略 -> http://127.0.0.1:43867', '[BLOCK] 请先完全退出 Claude Desktop，再使用这个入口。已有进程不会重新加载语言参数。'] };
+      },
       PickDir: async () => 'C:\\Users\\x\\Desktop\\Claude环境分享版',
       CleanPlan: async () => clean,
       Clean: async () => { await sleep(500); return { ok: true, removed: ['x'], errors: [], message: '已清理 1 项。', logPath: L + '\\ClaudeEnvGuard\\记录\\清理-x.json' }; },

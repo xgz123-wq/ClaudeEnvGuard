@@ -2,7 +2,7 @@
 import * as App from '../wailsjs/go/main/App';
 import { EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
 import type {
-  ApplyResult, BackupInfo, CleanPlan, CleanResult, FixPlan, InitState, LogRecord, Report, Settings, UpdateView,
+  ApplyResult, BackupInfo, CleanPlan, CleanResult, DeepResult, FixPlan, InitState, LaunchResult, LogRecord, Report, Settings, UpdateView,
 } from './types';
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -37,6 +37,21 @@ export const api = {
   },
   records: async (): Promise<LogRecord[]> => ((await App.Records()) as unknown as LogRecord[]) ?? [],
   pickDir: (title: string) => App.PickDir(title) as Promise<string>,
+  // 深度总检约 15 秒；检查后启动 Desktop（英文）先只检查，全部通过才启动
+  deepCheck: async (): Promise<DeepResult> => {
+    try {
+      return (await App.DeepCheck()) as unknown as DeepResult;
+    } catch (e) {
+      return { at: '', secs: 0, ok: false, pass: 0, warn: 0, fail: 0, manual: 0, items: [], script: '', summary: '', error: '调用失败：' + errText(e) };
+    }
+  },
+  launchDesktopEnglish: async (): Promise<LaunchResult> => {
+    try {
+      return (await App.LaunchDesktopEnglish()) as unknown as LaunchResult;
+    } catch (e) {
+      return { ok: false, started: false, lines: [], message: '调用失败：' + errText(e), script: '' };
+    }
+  },
   cleanPlan: (kind: string) => App.CleanPlan(kind) as unknown as Promise<CleanPlan>,
   clean: async (kind: string, paths: string[]): Promise<CleanResult> => {
     try {

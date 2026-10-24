@@ -3,7 +3,7 @@
 import { api, errText } from './api';
 import { ctx, startUrl } from './ctx';
 import { renderRoute } from './route';
-import type { CleanPlan, FixAction, FixPlan, Report, Result, Status } from './types';
+import type { CleanPlan, DeepResult, FixAction, FixPlan, LaunchResult, Report, Result, Status } from './types';
 import { $, esc, mb, statusLabel, toast } from './util';
 
 type Card = 'todo' | 'route' | 'browser' | 'cli' | 'desktop' | 'system';
@@ -37,12 +37,17 @@ const st = {
   outcome: new Map<string, boolean>(), // 修完每项成没成
   fixed: null as null | { ok: number; fail: number; backupId: string; until: number },
   clean: null as null | { kind: string; plan: CleanPlan | null; ok: boolean; busy: boolean; err: string },
+  // 深度总检：view 决定明细区显示它；结果留着，切走再回来还在
+  view: null as null | 'deep',
+  deep: null as null | { busy: boolean; start: number; res: DeepResult | null },
+  launch: null as null | { busy: boolean; res: LaunchResult | null },
   firstCheck: true,
   onFirstCheck: () => {},
 };
 
 let root: HTMLElement;
 let undoTimer = 0;
+let deepTimer = 0;
 
 // ---------------------------------------------------------------- 对外
 
@@ -69,6 +74,7 @@ export function mountCheck(el: HTMLElement, onFirstCheck: () => void) {
     }
   });
   ctx.runCheck = (offline = false) => { runCheck(offline); };
+  ctx.openDeep = () => { openDeep(); };
   render();
 }
 
@@ -335,10 +341,14 @@ function toolsHTML(): string {
     }
     case 'cli':
       return tool('Claude Code 读 ~/.claude/settings.json，改完要重启 Claude Code', cleanBtn('code'));
-    case 'desktop':
-      return tool('Desktop 的代理来自 HKLM 策略，改完要完全退出（含托盘）再打开', cleanBtn('desktop'));
+    case 'desktop': {
+      const busy = !!st.launch?.busy;
+      return tool('Desktop 的代理来自 HKLM 策略，改完要完全退出（含托盘）再打开',
+        `<button class="btn small" data-act="launch-en" ${busy ? 'disabled' : ''} title="先跑英文启动器的启动前检查，全部通过才启动；和桌面「Claude-英文浏览器」同一个脚本">${busy ? '正在检查…' : '检查后启动 Desktop（英文）'}</button>${cleanBtn('desktop')}`) + launchHTML();
+    }
     case 'system':
-      return tool('时区和区域格式「随 IP」：换了出口地区，这里的目标会跟着变', '');
+      return tool('时区和区域格式「随 IP」：换了出口地区，这里的目标会跟着变；Clash 规则、脚本哈希、直连防护的管理员证据要跑深度总检',
+        '<button class="btn small ghost" data-act="deep">深度总检（约 15 秒）</button>');
   }
   return '';
 }
@@ -395,6 +405,34 @@ function renderDetail() {
     title = st.phase === 'fixing' ? '正在修复' : '一键修复：勾选要改的';
     hint = '默认只勾必修项；可选项要你自己勾';
     body = planHTML();
+  } else if (st.view === 'deep') {
+    const d = st.deep;
+    back = true;
+    if (!d || d.busy) {
+      title = '深度总检';
+      hint = `正在跑「Claude环境一键总检」… 已用 ${d ? Math.round((Date.now() - d.start) / 1000) : 0} 秒（约 15 秒）`;
+      body = '<div class="skeleton">' + '<div class="sk-row"></div>'.repeat(5) + '</div>';
+    } else if (d.res?.error) {
+      title = '深度总检没跑成';
+      hint = d.res.script;
+      body = `<div class="note bad">${esc(d.res.error)}</div><button class="btn small" data-act="deep">再跑一次</button>`;
+    } else if (d.res) {
+      const r = d.res;
+      title = `深度总检 · ${r.pass} 通过 · ${r.warn} 提醒 · ${r.fail} 失败 · ${r.manual} 人工`;
+      hint = `${r.at} 跑完，用时 ${r.secs.toFixed(1)} 秒`;
+      const tone = r.fail ? 'bad' : r.warn ? 'warn' : '';
+      const map: Record<string, [string, string, string]> = { PASS: ['pass', '✓', '通过'], WARN: ['warn', '!', '提醒'], FAIL: ['fail', '×', '失败'], MANUAL: ['unknown', '?', '人工'] };
+      body = `<div class="note ${tone || 'ok'}">${esc(r.summary)}；这是桌面「Claude-环境一键总检」同一个脚本，只读</div>`
+        + (r.items ?? []).map((it, i) => {
+          const [k, mark, label] = map[it.status] ?? ['na', '–', it.status];
+          return `<div class="g-row s-${k} in" style="animation-delay:${Math.min(i, 12) * 30}ms"><div class="g-row-head deep">
+            <span class="g-dot">${mark}</span>
+            <span class="g-row-title"><span class="g-row-name">${esc(it.item)}</span></span>
+            <span class="g-cur" title="${esc(it.evidence)}">${esc(it.evidence)}</span>
+            <span class="pill ${k}">${label}</span></div></div>`;
+        }).join('')
+        + `<div class="g-deep-foot"><button class="btn small" data-act="deep">再跑一次</button>${r.path ? `<button class="btn small ghost" data-open="${esc(r.path)}">打开结果文件</button>` : ''}</div>`;
+    }
   } else if (st.clean) {
     title = st.clean.plan?.title || '清理' + cleanNames[st.clean.kind] + '登录';
     hint = '换账号、重新登录时用；先列清单，核对后才删';
@@ -444,6 +482,7 @@ async function onClick(e: MouseEvent) {
     st.card = card.dataset.card as Card;
     st.showPass = false;
     st.clean = null;
+    st.view = null;
     if (st.phase === 'plan') st.phase = 'ready';
     render();
     return;
@@ -452,6 +491,7 @@ async function onClick(e: MouseEvent) {
     if (st.phase === 'fixing') return;
     st.card = 'route';
     st.clean = null;
+    st.view = null;
     if (st.phase === 'plan') st.phase = 'ready';
     render();
     return;
@@ -466,6 +506,12 @@ async function onClick(e: MouseEvent) {
   }
   const cl = t.closest<HTMLElement>('[data-clean]');
   if (cl) return openClean(cl.dataset.clean!);
+  const op = t.closest<HTMLElement>('[data-open]');
+  if (op) {
+    const err = await api.openPath(op.dataset.open!);
+    if (err) toast('打不开：' + err, 'err');
+    return;
+  }
   const b = t.closest<HTMLElement>('[data-act]');
   if (!b || (b as HTMLButtonElement).disabled) return;
   switch (b.dataset.act) {
@@ -479,7 +525,9 @@ async function onClick(e: MouseEvent) {
     case 'open-browser': return openBrowser();
     case 'copy-ai': return copyForAI();
     case 'toggle-pass': st.showPass = !st.showPass; return renderDetail();
-    case 'back': st.clean = null; return render();
+    case 'back': st.clean = null; st.view = null; return render();
+    case 'deep': return openDeep(true);
+    case 'launch-en': return launchEnglish();
     case 'do-clean': return doClean();
   }
 }
@@ -596,6 +644,42 @@ async function copyForAI() {
   const text = `Claude 环境卫士 v${ctx.init?.version ?? ''} 体检有 ${m.length} 项要手动处理：\n${lines.join('\n')}\n\n先别改，列可能原因和验证方式。`;
   await api.copy(text);
   toast(`已复制：${m.length} 项的现象、当前值、目标值 + 一句「先别改，列可能原因和验证方式」`, 'ok');
+}
+
+// openDeep 打开深度总检视图；没跑过或要求重跑时跑一次（约 15 秒，只读）。
+async function openDeep(rerun = false) {
+  if (st.phase !== 'ready' || st.checking) return toast('等这次检查或修复结束再跑深度总检', 'info');
+  st.view = 'deep';
+  st.clean = null;
+  if (st.deep?.busy || (st.deep?.res && !rerun)) return render();
+  st.deep = { busy: true, start: Date.now(), res: null };
+  render();
+  window.clearInterval(deepTimer);
+  deepTimer = window.setInterval(() => { if (st.view === 'deep') renderDetail(); }, 1000);
+  const res = await api.deepCheck();
+  window.clearInterval(deepTimer);
+  st.deep = { busy: false, start: st.deep.start, res };
+  api.log(`深度总检：${res.error || res.summary}`);
+  if (st.view !== 'deep') toast(res.error ? '深度总检没跑成：' + res.error : '深度总检跑完：' + res.summary, res.error || res.fail ? 'err' : 'ok');
+  render();
+}
+
+// launchEnglish 和桌面「Claude-英文浏览器」同一个脚本：先 -CheckOnly，全部通过才按快捷方式启动；
+// 那个黑色窗口守着 Claude，关掉它 = 退出 Claude。
+async function launchEnglish() {
+  st.launch = { busy: true, res: null };
+  renderDetail();
+  const res = await api.launchDesktopEnglish();
+  st.launch = { busy: false, res };
+  toast(res.message, res.started ? 'ok' : 'err');
+  renderDetail();
+}
+
+function launchHTML(): string {
+  const r = st.launch?.res;
+  if (!r || r.started) return '';
+  const lines = (r.lines ?? []).filter((l) => l !== '[BLOCK] ' + r.message).map((l) => `<div class="mono g-launch-line ${l.startsWith('[BLOCK]') ? 'bad' : ''}">${esc(l)}</div>`).join('');
+  return `<div class="note warn g-launch"><b>没有启动：</b>${esc(r.message)}${lines}</div>`;
 }
 
 async function openClean(kind: string) {

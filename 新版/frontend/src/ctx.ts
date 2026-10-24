@@ -13,6 +13,8 @@ export const ctx = {
   runCheck: (_offline?: boolean) => {},
   // 由 records.ts 填上：修复、还原、清理之后刷新记录页
   refreshRecords: () => {},
+  // 由 check.ts 填上：⋯ 菜单里的「深度总检」
+  openDeep: () => {},
 };
 
 export const defaultStartUrl = 'https://ip.net.coffee/claude/';

@@ -12,6 +12,7 @@ import (
 	"ClaudeEnvGuard/internal/appconfig"
 	"ClaudeEnvGuard/internal/cleanup"
 	"ClaudeEnvGuard/internal/engine"
+	"ClaudeEnvGuard/internal/envscripts"
 	"ClaudeEnvGuard/internal/fixes"
 	"ClaudeEnvGuard/internal/geo"
 	"ClaudeEnvGuard/internal/logx"
@@ -29,6 +30,7 @@ type App struct {
 	cancel context.CancelFunc
 	last   model.Report
 	upd    *update.Runner
+	env    *envscripts.Runner
 }
 
 // NewApp 创建 App。
@@ -36,7 +38,7 @@ func NewApp(eng *engine.Engine) *App {
 	s, _ := eng.Settings()
 	upd := update.New(eng.Sys, s.SharePackageRoot)
 	upd.Proxy = fmt.Sprintf("http://127.0.0.1:%d", s.PortDesktop) // 查版本只经 Desktop 专用端口
-	return &App{eng: eng, upd: upd}
+	return &App{eng: eng, upd: upd, env: envscripts.New(eng.Sys, s.SharePackageRoot)}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -216,6 +218,24 @@ func (a *App) ReportText() string {
 		return ""
 	}
 	return report.Report(a.last, report.Style{}, true)
+}
+
+// ---------------------------------------------------------------- 深度总检、英文启动器（internal/envscripts，只调用桌面那两个图标的脚本）
+
+// DeepCheck 跑一次 Claude环境一键总检（只读，约 15 秒）。
+func (a *App) DeepCheck() envscripts.DeepResult {
+	logx.Printf("界面发起深度总检")
+	r := a.env.DeepCheck(a.ctx)
+	logx.Printf("深度总检 %.1f 秒：通过 %d 提醒 %d 失败 %d 人工 %d %s", r.Secs, r.Pass, r.Warn, r.Fail, r.Manual, r.Error)
+	return r
+}
+
+// LaunchDesktopEnglish 先跑英文启动器的 -CheckOnly，全部通过才按桌面快捷方式原样启动它。
+func (a *App) LaunchDesktopEnglish() envscripts.LaunchResult {
+	logx.Printf("界面发起检查后启动 Desktop（英文）")
+	r := a.env.LaunchEnglish(a.ctx)
+	logx.Printf("检查后启动 Desktop（英文）：%s %v", r.Message, r.Lines)
+	return r
 }
 
 // ---------------------------------------------------------------- 更新页（internal/update，只调用三端更新脚本、读它写的记录）

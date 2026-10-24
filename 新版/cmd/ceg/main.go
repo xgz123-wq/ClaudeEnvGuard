@@ -16,6 +16,7 @@ import (
 
 	"ClaudeEnvGuard/internal/cleanup"
 	"ClaudeEnvGuard/internal/engine"
+	"ClaudeEnvGuard/internal/envscripts"
 	"ClaudeEnvGuard/internal/fixes"
 	"ClaudeEnvGuard/internal/logx"
 	"ClaudeEnvGuard/internal/model"
@@ -37,6 +38,8 @@ const usage = `Claude 环境卫士（命令行版） v%s
   ceg restore [--list] [--id 备份编号 [--items 动作id,...]]
       还原某次修复；不带 --id 时还原最近一次；--items 只还原其中几项（动作 id 见 --list）。
   ceg records [--json]
+  ceg deep    [--json]
+      只读：跑桌面「Claude-环境一键总检」脚本（约 15 秒），列出 PASS / WARN / FAIL / MANUAL。
       只读：列出「记录」页的修复、还原、更新、清理。
   ceg clean   code|desktop|browser [--browser 名字] --plan|--yes [--json]
       清理登录数据。先用 --plan 看清单，确认后再用 --yes 执行。
@@ -83,6 +86,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdRestore(eng, rest, stdout, stderr, st)
 	case "records":
 		return cmdRecords(eng, rest, stdout, stderr)
+	case "deep":
+		return cmdDeep(sys, eng, rest, stdout, stderr)
 	case "clean":
 		return cmdClean(eng, rest, stdout, stderr, st)
 	case "update":
@@ -299,6 +304,35 @@ func cmdRestore(eng *engine.Engine, args []string, stdout, stderr io.Writer, st 
 		fmt.Fprintf(stdout, "还原 %s：\n%s", target, report.Apply(res, st))
 	}
 	if !res.OK {
+		return 2
+	}
+	return 0
+}
+
+// cmdDeep 跑一次深度总检（只读）。退出码：0 没有失败；2 有失败或没跑成。
+func cmdDeep(sys platform.OS, eng *engine.Engine, args []string, stdout, stderr io.Writer) int {
+	fs := newFlags("deep", stderr)
+	asJSON := fs.Bool("json", false, "输出 JSON")
+	if err := fs.Parse(args); err != nil {
+		return 3
+	}
+	s, _ := eng.Settings()
+	r := envscripts.New(sys, s.SharePackageRoot)
+	if !*asJSON {
+		fmt.Fprintln(stderr, "正在跑深度总检（约 15 秒）…")
+	}
+	res := r.DeepCheck(context.Background())
+	if *asJSON {
+		printJSON(stdout, res)
+	} else if res.Error != "" {
+		fmt.Fprintln(stdout, "没跑成："+res.Error)
+	} else {
+		for _, it := range res.Items {
+			fmt.Fprintf(stdout, "[%-6s] %s\n         %s\n", it.Status, it.Item, it.Evidence)
+		}
+		fmt.Fprintf(stdout, "\n%s（通过 %d · 提醒 %d · 失败 %d · 人工 %d，%.1f 秒）\n", res.Summary, res.Pass, res.Warn, res.Fail, res.Manual, res.Secs)
+	}
+	if res.Error != "" || res.Fail > 0 {
 		return 2
 	}
 	return 0

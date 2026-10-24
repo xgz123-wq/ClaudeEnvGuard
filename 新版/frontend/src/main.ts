@@ -30,6 +30,7 @@ function shell() {
         <button class="btn ghost small more" id="btn-more" aria-label="更多" aria-haspopup="menu">⋯</button>
         <div class="menu" id="menu" role="menu" hidden>
           <button role="menuitem" data-m="offline"><span>离线检查</span><em>只看本机</em></button>
+          <button role="menuitem" data-m="deep"><span>深度总检</span><em>约 15 秒</em></button>
           <button role="menuitem" data-m="copy"><span>复制报告</span><em>发给别人</em></button>
           <button role="menuitem" data-m="logs"><span>打开日志目录</span><em>保留 7 天</em></button>
         </div>
@@ -51,6 +52,10 @@ function shell() {
       case 'offline':
         showPage('check');
         runCheck(true);
+        break;
+      case 'deep':
+        showPage('check');
+        ctx.openDeep();
         break;
       case 'copy': {
         const t = await api.reportText();

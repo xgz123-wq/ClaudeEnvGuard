@@ -259,3 +259,12 @@ select:focus, input:focus { outline: 2px solid var(--accent-soft); border-color:
 .set-path { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
 .set-group.wide { grid-column: span 2; }
 @media (max-width: 1100px) { .set-group.wide { grid-column: auto; } }
+
+/* 深度总检、英文启动器 */
+.note.ok { background: var(--pass-soft); color: var(--pass); }
+.g-row-head.deep { cursor: default; }
+.g-row .g-row-head.deep .g-cur { white-space: nowrap; }
+.g-deep-foot { display: flex; gap: 8px; padding: 6px 2px; flex: none; }
+.g-launch { flex: none; }
+.g-launch-line { font-size: 12px; margin-top: 2px; color: var(--ink-2); font-weight: 400; }
+.g-launch-line.bad { color: var(--fail); }

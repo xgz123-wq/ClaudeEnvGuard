@@ -106,6 +106,15 @@ export interface RegionChoice { id: string; label: string; countryCode: string; 
 export interface DataPaths { settings: string; backups: string; logs: string; records: string; updates: string }
 export interface InitState { version: string; settings: Settings; note: string; regions: RegionChoice[]; isAdmin: boolean; logDir?: string; defaults: Settings; paths?: DataPaths }
 
+// ---------------------------------------------------------------- 深度总检、英文启动器（Go 端 internal/envscripts）
+
+export interface DeepItem { status: 'PASS' | 'WARN' | 'FAIL' | 'MANUAL'; item: string; evidence: string }
+export interface DeepResult {
+  at: string; secs: number; ok: boolean; pass: number; warn: number; fail: number; manual: number;
+  items: DeepItem[] | null; script: string; path?: string; error?: string; summary: string;
+}
+export interface LaunchResult { ok: boolean; started: boolean; lines: string[] | null; message: string; script: string }
+
 // ---------------------------------------------------------------- 更新页（Go 端 internal/update.View）
 
 export type UPhase = 'never' | 'checking' | 'checkfail' | 'latest' | 'update' | 'blocked' | 'unsafe' | 'running' | 'done' | 'failed';
