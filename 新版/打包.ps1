@@ -4,7 +4,8 @@
 .DESCRIPTION
     默认：跑全部单元测试 → 构建两个 exe 到 build\bin。
     -Deploy：再把两个 exe 复制到上一级目录（D:\Tools\ClaudeEnvGuard），桌面图标指向的就是那里；
-    覆盖前先把那里现有的两个 exe 另存为 ClaudeEnvGuard-v<旧版本>.exe、ceg-v<旧版本>.exe，已有同名备份就不动它。
+    覆盖前先把那里现有的两个 exe 另存为 ClaudeEnvGuard-v<旧版本>.exe、ceg-v<旧版本>.exe，已有同名备份就不动它；
+    只留这一份上一版用来马上回退，更早的备份移到回收站（每个版本都在 GitHub Release 里）。
     依赖：Go（%LOCALAPPDATA%\Programs\go）、wails（%USERPROFILE%\go\bin）、Node。不用 conda。
 #>
 [CmdletBinding()]
@@ -30,6 +31,12 @@ function Backup-Deployed([string] $Dest) {
         if (Test-Path $bak) { Write-Host "已有 $(Split-Path $bak -Leaf)，保留原备份不覆盖"; continue }
         Copy-Item $src $bak   # 复制不是移动：后面覆盖失败时，原程序还在
         Write-Host "旧版另存为 $(Split-Path $bak -Leaf)"
+    }
+    # 只留上一版：更早的备份移到回收站，不直接删
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    Get-ChildItem $Dest -File | Where-Object { $_.Name -match '^(ClaudeEnvGuard|ceg)-(v|旧-).+\.exe$' -and $_.BaseName -notlike "*-$tag" } | ForEach-Object {
+        [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($_.FullName, 'OnlyErrorDialogs', 'SendToRecycleBin')
+        Write-Host "更早的备份 $($_.Name) 已移到回收站"
     }
 }
 $env:PATH = "$env:LOCALAPPDATA\Programs\go\bin;$env:USERPROFILE\go\bin;$env:PATH"

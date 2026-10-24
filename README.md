@@ -17,7 +17,7 @@
 | 最近做了什么、哪些没验证、怎么回退 | [维护记录.md](维护记录.md) |
 | v2 需求原文 | [重构需求.md](重构需求.md) |
 | v2.1+ 需求：并入三端更新、界面改版、隔离与回退 | [更新并入需求.md](更新并入需求.md) |
-| 可点原型（体检 / 更新 / 记录 / 设置、功能地图、性能对照） | [原型/](原型/) |
+| 可点原型（体检 / 更新 / 记录 / 设置、功能地图、性能对照），双击就能打开 | [原型/](原型/) |
 | 五个桌面图标和卫士功能逐项对比 | [五项自检对比.md](五项自检对比.md) |
 | 这一轮怎么做出来的、设计要点、自测题 | [复盘/](复盘/) |
 
@@ -27,7 +27,7 @@
 |---|---|---|
 | `新版\` | 源码、测试、`打包.ps1` | 是 |
 | `ClaudeEnvGuard.exe`、`ceg.exe` | 部署的程序（桌面图标指向前者） | 否，放在 GitHub Release |
-| `ClaudeEnvGuard-v*.exe`、`ceg-v*.exe` | 每次部署前留下的旧版，用来回退 | 否 |
+| `ClaudeEnvGuard-v*.exe`、`ceg-v*.exe` | 部署时留下的上一版（只留一份），用来马上回退；更早的在 GitHub Release | 否 |
 | `卸载.bat` | 只删程序、图标和卸载项，保留源码和备份 | 是 |
 | `*.md`、`原型\`、`复盘\` | 需求、记录、原型源码、复盘 | 是 |
 
@@ -47,7 +47,7 @@
 
 | 想要 | 做法 |
 |---|---|
-| 马上退回本机上一个版本 | 关掉卫士，把根目录 `ClaudeEnvGuard-v<版本>.exe`、`ceg-v<版本>.exe` 复制回 `ClaudeEnvGuard.exe`、`ceg.exe`；脚本怎么退见 [维护记录.md](维护记录.md)「怎么回退」 |
+| 退回某个版本 | 关掉卫士；上一版直接用根目录的 `ClaudeEnvGuard-v<版本>.exe`、`ceg-v<版本>.exe`，更早的从 GitHub Release 对应标签下载这两个 exe；复制回 `ClaudeEnvGuard.exe`、`ceg.exe`。脚本怎么退见 [维护记录.md](维护记录.md)「怎么回退」 |
 | 只看看旧版代码 | GitHub 仓库页 → Tags → 选标签 → Download ZIP |
 | 在本机另放一份旧版，不影响现在的 | `git -C D:\Tools\ClaudeEnvGuard worktree add D:\Tools\环境卫士-旧版 <标签>`，用完 `git -C D:\Tools\ClaudeEnvGuard worktree remove D:\Tools\环境卫士-旧版` |
 | 从源码打包某个 v2 版本 | 先把 `main` 上的 `新版\打包.ps1` 复制进上面那份旧版目录覆盖（`v2.0.1` 及更早的打包脚本在新克隆的目录里会因缺 `frontend\dist` 失败），再运行 `pwsh -File 新版\打包.ps1`，exe 在 `新版\build\bin\` |
@@ -75,7 +75,7 @@
 
 1. 改代码，补对应的单元测试（系统调用走 `internal/platform` 的 `Fake`，不碰真机）。
 2. `pwsh -File 新版\打包.ps1`：跑全部测试并构建两个 exe；测试不过不会打包。
-3. 关掉正在运行的环境卫士窗口，`pwsh -File 新版\打包.ps1 -Deploy` 部署到本目录。覆盖前会自动把旧的两个 exe 另存为 `ClaudeEnvGuard-v<旧版本>.exe`、`ceg-v<旧版本>.exe`，版本号从旧 `ceg.exe version` 读，读不到时用修改时间命名为 `-旧-<时间>`；已有同名备份就保留不覆盖。
+3. 关掉正在运行的环境卫士窗口，`pwsh -File 新版\打包.ps1 -Deploy` 部署到本目录。覆盖前会自动把旧的两个 exe 另存为 `ClaudeEnvGuard-v<旧版本>.exe`、`ceg-v<旧版本>.exe`，版本号从旧 `ceg.exe version` 读，读不到时用修改时间命名为 `-旧-<时间>`；已有同名备份就保留不覆盖。只留这一份上一版，更早的备份移到回收站（每个版本 Release 里都有）。
 4. 看一眼输出里的「旧版另存为…」，确认旧版留下了。
 5. 双击桌面图标实测改动点；涉及修复、还原、清理、更新的，由本人在界面里操作确认。
 6. 提交 → 打标签 `git tag -a vX.Y.Z -m "一句话说明"` → `git push` 和 `git push --tags`。
