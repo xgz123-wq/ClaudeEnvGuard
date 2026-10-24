@@ -1,0 +1,11 @@
+# 部署的程序和旧版备份（放在 GitHub Release）
+/*.exe
+# 构建产物
+/新版/build/bin/
+/新版/frontend/node_modules/
+/新版/frontend/dist/
+/新版/frontend/wailsjs/
+/发布/
+*.log
+# 界面预览用的真实检查结果，含出口 IP
+/新版/frontend/dev/*.json

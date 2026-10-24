@@ -1,10 +1,25 @@
 # Claude 环境卫士
 
-按**出口 IP** 体检 Claude 三个入口（专用浏览器、Claude Code、Claude Desktop）的使用环境，带一键修复、整次还原和登录清理。Windows 专用，Go + Wails 编写。
+按**出口 IP** 体检 Claude 三个入口（专用浏览器、Claude Code、Claude Desktop）的使用环境：一键修复、按项还原、登录清理，并把桌面上原来分散的「三端更新」「一键总检」「英文浏览器」收进同一个程序。Windows 专用，Go + Wails 编写，当前 v2.5.0。
 
-- **怎么用、查什么、数据存哪**：见 [新版/README.md](新版/README.md)。
-- **最近做了什么、哪些没验证**：见 [维护记录.md](维护记录.md)。
-- **当初的需求原文**：见 [重构需求.md](重构需求.md)。
+| 页 | 做什么 |
+|---|---|
+| 体检 | 打开就查，约 5 秒；一键修复、深度总检、打开专用浏览器复核、清理登录 |
+| 更新 | 三端（Desktop、CLI、VS Code 插件）查版本约 2 秒，一键更新，显示第几步和剩余时间 |
+| 记录 | 修复、还原、更新、清理按时间排，「改之前 → 改之后」，修复可按项还原 |
+| ⚙ 设置 | 端口、目标地区、默认浏览器与起始网址、分享包目录、数据位置 |
+
+## 文档在哪
+
+| 想看 | 文件 |
+|---|---|
+| 怎么用、命令行、检查项、数据存哪 | [新版/README.md](新版/README.md) |
+| 最近做了什么、哪些没验证、怎么回退 | [维护记录.md](维护记录.md) |
+| v2 需求原文 | [重构需求.md](重构需求.md) |
+| v2.1+ 需求：并入三端更新、界面改版、隔离与回退 | [更新并入需求.md](更新并入需求.md) |
+| 可点原型（体检 / 更新 / 记录 / 设置、功能地图、性能对照） | [原型/](原型/) |
+| 五个桌面图标和卫士功能逐项对比 | [五项自检对比.md](五项自检对比.md) |
+| 这一轮怎么做出来的、设计要点、自测题 | [复盘/](复盘/) |
 
 ## 目录
 
@@ -12,8 +27,9 @@
 |---|---|---|
 | `新版\` | 源码、测试、`打包.ps1` | 是 |
 | `ClaudeEnvGuard.exe`、`ceg.exe` | 部署的程序（桌面图标指向前者） | 否，放在 GitHub Release |
+| `ClaudeEnvGuard-v*.exe`、`ceg-v*.exe` | 每次部署前留下的旧版，用来回退 | 否 |
 | `卸载.bat` | 只删程序、图标和卸载项，保留源码和备份 | 是 |
-| `维护记录.md`、`重构需求.md` | 维护记录、需求原文 | 是 |
+| `*.md`、`原型\`、`复盘\` | 需求、记录、原型源码、复盘 | 是 |
 
 ## 拿回某个版本
 
@@ -22,11 +38,16 @@
 | 标签 | 是什么 | 程序怎么拿 |
 |---|---|---|
 | `v1-原型` | Kimi 做的 Python + PySide6 版，在 `源码\` 目录 | 没有现成 exe；要按该版本 `源码\README.md` 装 Python 3.12 和 PySide6 后重新打包 |
-| `v2.0.0` | Go 重构版 | GitHub Release 页直接下载（2026-10-15 从标签源码补打包） |
-| `v2.0.1` 及以后 | 窗口按屏幕缩小，之后的版本 | GitHub Release 页直接下载 |
+| `v2.0.0` – `v2.0.2` | Go 重构版：按出口 IP 体检、一键修复、整次还原、登录清理 | GitHub Release 页直接下载 |
+| `v2.1.0` | 加「更新」页，调同一个三端更新脚本 | 同上 |
+| `v2.2.0` | 体检页改版、记录页按项还原、设置页、清理留痕 | 同上 |
+| `v2.3.0` | 查版本改 Go，三个源并行，约 2 秒 | 同上 |
+| `v2.4.0` | 深度总检、检查后启动 Desktop（英文） | 同上 |
+| `v2.5.0` | VS Code 插件自动更新 | 同上 |
 
 | 想要 | 做法 |
 |---|---|
+| 马上退回本机上一个版本 | 关掉卫士，把根目录 `ClaudeEnvGuard-v<版本>.exe`、`ceg-v<版本>.exe` 复制回 `ClaudeEnvGuard.exe`、`ceg.exe`；脚本怎么退见 [维护记录.md](维护记录.md)「怎么回退」 |
 | 只看看旧版代码 | GitHub 仓库页 → Tags → 选标签 → Download ZIP |
 | 在本机另放一份旧版，不影响现在的 | `git -C D:\Tools\ClaudeEnvGuard worktree add D:\Tools\环境卫士-旧版 <标签>`，用完 `git -C D:\Tools\ClaudeEnvGuard worktree remove D:\Tools\环境卫士-旧版` |
 | 从源码打包某个 v2 版本 | 先把 `main` 上的 `新版\打包.ps1` 复制进上面那份旧版目录覆盖（`v2.0.1` 及更早的打包脚本在新克隆的目录里会因缺 `frontend\dist` 失败），再运行 `pwsh -File 新版\打包.ps1`，exe 在 `新版\build\bin\` |
@@ -37,16 +58,16 @@
 
 | 对方要什么 | 做法 |
 |---|---|
-| 只用程序 | 把 Release 里的 `ClaudeEnvGuard.exe` 和 `ceg.exe` 发给他，放同一个目录双击即可 |
+| 只用程序 | 把 Release 里的 `ClaudeEnvGuard.exe` 和 `ceg.exe` 发给他，放同一个目录双击即可；「更新」「深度总检」「英文启动」还需要他有 Claude 环境分享包里的脚本 |
 | 看或改源码 | GitHub 仓库 Settings → Collaborators 加他的账号（仓库保持私有） |
 
-- **仓库不能直接改公开**：Git 历史里有本机真实出口 IP（维护记录和测试数据）。要公开，先改写全部历史去掉它，再改可见性。
+- **仓库不能直接改公开**：Git 历史里有本机真实出口 IP（维护记录和测试数据）。要公开，先改写全部历史去掉它，再改可见性；或者另建一个公开仓库，只放脱敏后的文档。
 
 ## 开发规范
 
 ### 版本与分支
 
-- **分支**：只用 `main`，直接在上面提交；只有大改、可能整体放弃时才临时开分支，合回 `main` 后删掉。
+- **分支**：小改直接在 `main` 上提交。大改、可能整体放弃的，开临时分支并放在**单独的 worktree** 里改（不动本目录的工作区），合回 `main` 后删掉分支和 worktree；v2.1–v2.5 每个阶段都这样做，见 [更新并入需求.md](更新并入需求.md) 第 2.1 节。
 - **版本号**：`主.次.修`。修 bug 加修订号，加功能加次版本号；同时改 `新版\internal\version\version.go` 和 `新版\wails.json` 的 `productVersion`。
 - **提交信息**：一行简短中文，术语保留英文，例如「窗口按屏幕工作区缩小」。
 
@@ -54,15 +75,21 @@
 
 1. 改代码，补对应的单元测试（系统调用走 `internal/platform` 的 `Fake`，不碰真机）。
 2. `pwsh -File 新版\打包.ps1`：跑全部测试并构建两个 exe；测试不过不会打包。
-3. 关掉正在运行的环境卫士窗口，`pwsh -File 新版\打包.ps1 -Deploy` 部署到本目录。
-4. 双击桌面图标实测改动点；涉及修复、还原、清理的，由本人在界面里操作确认。
-5. 提交 → 打标签 `git tag -a vX.Y.Z -m "一句话说明"` → `git push` 和 `git push --tags`。
-6. 发 Release：`gh release create vX.Y.Z ClaudeEnvGuard.exe ceg.exe --title vX.Y.Z --notes "一句话说明"`（在本目录执行）。
-7. `维护记录.md` 的「历史」表加一行；大改写成完整一节，上一节压成一行。
+3. **先留旧版**：把根目录当前的 `ClaudeEnvGuard.exe`、`ceg.exe` 另存为 `ClaudeEnvGuard-v<旧版本>.exe`、`ceg-v<旧版本>.exe`（`打包.ps1 -Deploy` 会直接覆盖，不会替你备份）。
+4. 关掉正在运行的环境卫士窗口，`pwsh -File 新版\打包.ps1 -Deploy` 部署到本目录。
+5. 双击桌面图标实测改动点；涉及修复、还原、清理、更新的，由本人在界面里操作确认。
+6. 提交 → 打标签 `git tag -a vX.Y.Z -m "一句话说明"` → `git push` 和 `git push --tags`。
+7. 发 Release：`gh release create vX.Y.Z ClaudeEnvGuard.exe ceg.exe --title vX.Y.Z --notes "一句话说明"`（在本目录执行）。
+8. `维护记录.md` 的「历史」表加一行；大改写成完整一节，上一节压成一行。
+
+### 改到外部脚本时
+
+更新、深度总检、英文启动都调 `AI应用开发\docs\配置\Claude环境\` 下的脚本，卫士只套界面。改这些脚本时：先把旧脚本备份到 `%LOCALAPPDATA%\ClaudeNetworkGuard\<说明>备份-<时间>\`；新参数不传时行为必须和原来一样（桌面图标还在用）；卫士靠「脚本里有没有这段」判断新功能，不靠版本号。
 
 ### 边界
 
-- **AI 在本机只跑只读命令**：`ceg check`、`ceg fix --plan`、`ceg clean <类型> --plan`；`fix --apply`、`restore`、`clean --yes` 要本人当次同意。
-- **不进 Git 的东西**：exe、`build\bin\`、`node_modules`、`dist`、`wailsjs`、日志、`新版\frontend\dev\*.json`（含真实 IP 的检查结果）。目前写在本机 `.git\info\exclude`，新克隆的仓库不带这份规则。
+- **AI 在本机只跑只读命令**：`ceg check`、`ceg fix --plan`、`ceg clean <类型> --plan`、`ceg update --check`、`ceg records`、`ceg deep`、三端更新脚本 `-Action Check`。
+- **要本人当次同意**：`fix --apply`、`restore`、`clean --yes`、`update --apply`、装插件、启停 Claude / Clash / 浏览器、部署；UAC 由本人点。
+- **不进 Git 的东西**：exe、`build\bin\`、`node_modules`、`dist`、`wailsjs`、日志、`新版\frontend\dev\*.json`（含真实 IP 的检查结果）。规则在根目录 `.gitignore`，新克隆的仓库也带着。
 - **工具链**：Go 1.27（`%LOCALAPPDATA%\Programs\go`）、Wails v2.14（`%USERPROFILE%\go\bin`）、Node 24；不用 conda 的 Python。
-- **文档**：同一件事只写在一处，其他地方链接过去；用法写 `新版\README.md`，规范写本文件，经过和结果写 `维护记录.md`。
+- **文档**：同一件事只写在一处，其他地方链接过去；用法写 `新版\README.md`，规范写本文件，经过和结果写 `维护记录.md`，需求写需求文档。
