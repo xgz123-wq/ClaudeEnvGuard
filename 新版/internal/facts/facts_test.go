@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,6 +45,11 @@ func TestBrowserDiscovery(t *testing.T) {
 	// 标准目录外、但走浏览器专用端口：应列出
 	_ = fk.WriteShortcut(platform.Shortcut{Path: filepath.Join(fk.P.Desktop, "工作号.lnk"), Target: `C:\chrome.exe`,
 		Args: `--user-data-dir="D:\work" --proxy-server="socks5://127.0.0.1:43866"`})
+	// 开始菜单和公共桌面不再扫描：即使名字带 Claude、走专用端口也不列出
+	for _, d := range []string{fk.P.StartMenu, fk.P.CommonStartMenu, fk.P.PublicDesktop} {
+		_ = fk.WriteShortcut(platform.Shortcut{Path: filepath.Join(d, "Claude-别处.lnk"), Target: `C:\chrome.exe`,
+			Args: `--user-data-dir="D:\elsewhere" --proxy-server="socks5://127.0.0.1:43866"`})
+	}
 	procs := []platform.Process{
 		{PID: 10, Name: "chrome.exe", CmdLine: `chrome.exe --user-data-dir="` + kk + `" --proxy-server=socks5://127.0.0.1:43866`},
 		{PID: 11, Name: "chrome.exe", CmdLine: `chrome.exe --type=renderer --user-data-dir="` + kk + `"`},
@@ -97,12 +103,15 @@ func TestGuardedTimeoutAndPanic(t *testing.T) {
 	errs := map[string]string{}
 	val := 0
 	start := time.Now()
-	Guarded(context.Background(), &mu, errs, "slow", 50*time.Millisecond, func() func() {
+	tm := Guarded(context.Background(), &mu, errs, "slow", 50*time.Millisecond, func() func() {
 		time.Sleep(300 * time.Millisecond)
 		return func() { val = 1 }
 	})
 	if time.Since(start) > 200*time.Millisecond || errs["slow"] != "读取超时" {
 		t.Errorf("超时没生效：%v %v", time.Since(start), errs)
+	}
+	if tm.OK || tm.Attempts != 1+CollectorRetries {
+		t.Errorf("全部超时应记为失败并跑满重试次数：%+v", tm)
 	}
 	time.Sleep(350 * time.Millisecond)
 	if val != 0 {
@@ -111,6 +120,48 @@ func TestGuardedTimeoutAndPanic(t *testing.T) {
 	Guarded(context.Background(), &mu, errs, "boom", time.Second, func() func() { panic("炸了") })
 	if !strings.Contains(errs["boom"], "炸了") {
 		t.Errorf("panic 应被捕获：%v", errs)
+	}
+}
+
+// 第一次超时、第二次很快：用第二次的结果，不报错。
+func TestGuardedRetryAfterTimeout(t *testing.T) {
+	var mu sync.Mutex
+	errs := map[string]string{}
+	var calls atomic.Int32
+	val := 0
+	tm := Guarded(context.Background(), &mu, errs, "cold", 50*time.Millisecond, func() func() {
+		n := calls.Add(1)
+		if n == 1 {
+			time.Sleep(300 * time.Millisecond)
+		}
+		return func() { val = int(n) }
+	})
+	if len(errs) != 0 || val != 2 || !tm.OK || tm.Attempts != 2 {
+		t.Errorf("重试应成功并写回第二次的结果：errs=%v val=%d %+v", errs, val, tm)
+	}
+	if !strings.Contains(tm.String(), "重试后") {
+		t.Errorf("日志写法应标出重试：%s", tm)
+	}
+}
+
+// 第一次只是晚到一点、比重试先完成：直接用第一次的结果。
+func TestGuardedLateFirstAttemptWins(t *testing.T) {
+	var mu sync.Mutex
+	errs := map[string]string{}
+	var calls atomic.Int32
+	val := 0
+	start := time.Now()
+	tm := Guarded(context.Background(), &mu, errs, "late", 50*time.Millisecond, func() func() {
+		n := calls.Add(1)
+		if n == 1 {
+			time.Sleep(70 * time.Millisecond)
+		} else {
+			time.Sleep(time.Second)
+		}
+		return func() { val = int(n) }
+	})
+	if len(errs) != 0 || val != 1 || !tm.OK || time.Since(start) > 500*time.Millisecond {
+		t.Errorf("晚到的第一次应被采用：errs=%v val=%d %+v 用时 %v", errs, val, tm, time.Since(start))
 	}
 }
 

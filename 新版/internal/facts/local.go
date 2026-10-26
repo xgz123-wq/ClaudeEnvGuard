@@ -21,6 +21,7 @@ import (
 	"ClaudeEnvGuard/internal/appconfig"
 	"ClaudeEnvGuard/internal/chrome"
 	"ClaudeEnvGuard/internal/jsonx"
+	"ClaudeEnvGuard/internal/logx"
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/netprobe"
 	"ClaudeEnvGuard/internal/platform"
@@ -53,10 +54,16 @@ var ThirdPartyKeys = []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_API_URL", "ANTHRO
 
 var secretKeys = map[string]bool{"ANTHROPIC_AUTH_TOKEN": true, "ANTHROPIC_API_KEY": true}
 
-// CollectLocal 跑本地阶段的全部收集器。每个收集器有独立超时。
+// CollectorRetries 是本地收集器超时后再跑的次数。刚开机或刚打开卫士时文件没进缓存，第一次常常偏慢。
+const CollectorRetries = 1
+
+// slowStep 超过这个时长的子步骤写进日志，方便找出慢在哪。
+const slowStep = time.Second
+
+// CollectLocal 跑本地阶段的全部收集器。每个收集器有独立超时，超时后再试一次。
 func CollectLocal(ctx context.Context, sys platform.OS, s appconfig.Settings) *Facts {
 	f := &Facts{Settings: s, Paths: sys.Paths(), IsAdmin: sys.IsAdmin(), Now: time.Now(),
-		Exits: map[model.Entry]*model.Exit{}, Errors: map[string]string{}}
+		Exits: map[model.Entry]*model.Exit{}, Errors: map[string]string{}, Timings: map[string]CollectorTiming{}}
 	procs, perr := sys.Processes("chrome.exe", "claude.exe")
 	if perr != nil {
 		f.Errors["processes"] = perr.Error()
@@ -69,7 +76,12 @@ func CollectLocal(ctx context.Context, sys platform.OS, s appconfig.Settings) *F
 	}
 	var mu sync.Mutex
 	run := func(name string, timeout time.Duration, fn func() func()) func() {
-		return func() { Guarded(ctx, &mu, f.Errors, name, timeout, fn) }
+		return func() {
+			t := Guarded(ctx, &mu, f.Errors, name, timeout, fn)
+			mu.Lock()
+			f.Timings[name] = t
+			mu.Unlock()
+		}
 	}
 	parallel(
 		run("proxy", 1500*time.Millisecond, func() func() {
@@ -78,7 +90,11 @@ func CollectLocal(ctx context.Context, sys platform.OS, s appconfig.Settings) *F
 		}),
 		run("browsers", 2500*time.Millisecond, func() func() {
 			list, sel := collectBrowsers(sys, s, procs)
+			st := time.Now()
 			exe := findChrome(sys)
+			if d := time.Since(st); d > slowStep {
+				logx.Printf("找 Chrome 程序偏慢：%v", d.Round(time.Millisecond))
+			}
 			return func() { f.Browsers, f.Selected, f.ChromeExe = list, sel, exe }
 		}),
 		run("cli", 1500*time.Millisecond, func() func() {
@@ -106,41 +122,85 @@ func CollectLocal(ctx context.Context, sys platform.OS, s appconfig.Settings) *F
 	return f
 }
 
-// Guarded 给收集器加超时与 panic 保护。fn 在后台算出结果并返回一个「写回」函数；
-// 只有按时完成才写回，超时的结果直接丢弃，避免和判定逻辑并发读写同一字段。
-func Guarded(ctx context.Context, mu *sync.Mutex, errs map[string]string, name string, timeout time.Duration, fn func() func()) {
+// CollectorTiming 是一个本地收集器的耗时，写进检查日志。
+type CollectorTiming struct {
+	Elapsed  time.Duration // 从开始到拿到结果或放弃
+	Attempts int           // 一共跑了几次
+	OK       bool
+}
+
+// String 是日志里的写法，例如「20ms」「2.61s（重试后）」「超时（跑了 2 次）」。
+func (t CollectorTiming) String() string {
+	d := t.Elapsed.Round(time.Millisecond)
+	switch {
+	case !t.OK:
+		return fmt.Sprintf("%v 失败（跑了 %d 次）", d, t.Attempts)
+	case t.Attempts > 1:
+		return fmt.Sprintf("%v（重试后）", d)
+	}
+	return d.String()
+}
+
+// Guarded 给收集器加超时、重试与 panic 保护。fn 在后台算出结果并返回一个「写回」函数；
+// 超时就再起一次 fn，先完成的那次（包括晚到的第一次）写回；全部超时则不写回，
+// 避免和判定逻辑并发读写同一字段。放弃后仍在跑的 fn 读完时把实际耗时记进日志。
+func Guarded(ctx context.Context, mu *sync.Mutex, errs map[string]string, name string, timeout time.Duration, fn func() func()) CollectorTiming {
 	type outcome struct {
 		apply func()
 		err   string
 	}
-	ch := make(chan outcome, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				ch <- outcome{err: fmt.Sprintf("内部错误：%v\n%s", r, firstLines(string(debug.Stack()), 8))}
-			}
+	start := time.Now()
+	ch := make(chan outcome, CollectorRetries+1)
+	launch := func() {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					ch <- outcome{err: fmt.Sprintf("内部错误：%v\n%s", r, firstLines(string(debug.Stack()), 8))}
+				}
+			}()
+			ch <- outcome{apply: fn()}
 		}()
-		ch <- outcome{apply: fn()}
-	}()
+	}
+	launch()
+	attempts := 1
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	var res outcome
-	select {
-	case res = <-ch:
-	case <-timer.C:
-		res.err = "读取超时"
-	case <-ctx.Done():
-		res.err = "已取消"
+wait:
+	for {
+		select {
+		case res = <-ch:
+			break wait
+		case <-timer.C:
+			if attempts > CollectorRetries {
+				res.err = "读取超时"
+				break wait
+			}
+			attempts++
+			launch()
+			timer.Reset(timeout)
+		case <-ctx.Done():
+			res.err = "已取消"
+			break wait
+		}
+	}
+	t := CollectorTiming{Elapsed: time.Since(start), Attempts: attempts, OK: res.err == ""}
+	if res.err == "读取超时" {
+		go func() {
+			<-ch
+			logx.Printf("收集器 %s 放弃后才读完：从开始共 %v", name, time.Since(start).Round(time.Millisecond))
+		}()
 	}
 	mu.Lock()
 	defer mu.Unlock()
 	if res.err != "" {
 		errs[name] = res.err
-		return
+		return t
 	}
 	if res.apply != nil {
 		res.apply()
 	}
+	return t
 }
 
 func firstLines(s string, n int) string {
@@ -310,11 +370,10 @@ func collectBrowsers(sys platform.OS, s appconfig.Settings, procs []platform.Pro
 			add(&Browser{Name: e.Name(), UserDataDir: ud, Standard: true, DirExists: exists(ud)})
 		}
 	}
-	var lnks []string
-	lnks = append(lnks, listLnk(paths.Desktop, 0)...)
-	lnks = append(lnks, listLnk(paths.PublicDesktop, 0)...)
-	lnks = append(lnks, listLnk(paths.StartMenu, 2)...)
-	lnks = append(lnks, listLnk(paths.CommonStartMenu, 1)...)
+	// 只看当前用户桌面：分享包的创建脚本只往这里放快捷方式，一键总检也只扫这里。
+	// 开始菜单动辄上百个图标，刚开机时逐个读会超时。
+	st := time.Now()
+	lnks := listLnk(paths.Desktop, 0)
 	for _, l := range lnks {
 		if !lnkMentions(l, "user-data-dir") {
 			continue
@@ -340,6 +399,7 @@ func collectBrowsers(sys platform.OS, s appconfig.Settings, procs []platform.Pro
 		b := add(&Browser{Name: name, UserDataDir: ud, Standard: strings.HasPrefix(chrome.NormDir(ud), chrome.NormDir(root)+`\`), DirExists: exists(ud)})
 		b.Shortcuts = append(b.Shortcuts, ShortcutInfo{Shortcut: sc, Flags: flags})
 	}
+	lnkTime := time.Since(st)
 	// 运行中的主进程
 	for _, p := range procs {
 		if !strings.EqualFold(p.Name, "chrome.exe") || p.CmdLine == "" || strings.Contains(p.CmdLine, "--type=") {
@@ -376,6 +436,10 @@ func collectBrowsers(sys platform.OS, s appconfig.Settings, procs []platform.Pro
 		}
 		return list[i].Name < list[j].Name
 	})
+	if d := time.Since(st); d > slowStep {
+		logx.Printf("读专用浏览器偏慢：共 %v，其中桌面快捷方式 %d 个 %v，读 %d 个浏览器资料 %v",
+			d.Round(time.Millisecond), len(lnks), lnkTime.Round(time.Millisecond), len(list), (d - lnkTime).Round(time.Millisecond))
+	}
 	var sel *Browser
 	for i := range list {
 		if list[i].Name == s.SelectedBrowser {

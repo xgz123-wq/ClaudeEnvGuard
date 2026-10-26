@@ -115,7 +115,7 @@ All commands and exit codes: [新版/README.md (命令行)](新版/README.md#命
 
 ## Project status
 
-- **Current version**: v2.5.0 (2026-10-24); every version's exes are on [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases).
+- **Current version**: v2.5.1 (2026-10-26); every version's exes are on [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases).
 - **Tests**: Go unit tests cover check logic, fixes, restores, clean-ups and the version check, with all system calls behind a fake; there is no CI — the author runs them locally before each build.
 - **Maintenance**: built for the author's own use and updated alongside the share pack; no fixed release schedule.
 

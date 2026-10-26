@@ -44,12 +44,7 @@ func TestRealLocalTiming(t *testing.T) {
 	tm("firewall", func() { collectFirewall(sys) })
 	p := sys.Paths()
 	tm("lnk-scan", func() {
-		n := 0
-		for _, d := range []string{p.Desktop, p.PublicDesktop} {
-			n += len(listLnk(d, 0))
-		}
-		n2 := len(listLnk(p.StartMenu, 2)) + len(listLnk(p.CommonStartMenu, 1))
-		t.Logf("  桌面 lnk %d，开始菜单 lnk %d", n, n2)
+		t.Logf("  桌面 lnk %d（只扫这里）", len(listLnk(p.Desktop, 0)))
 	})
 	tm("all", func() { CollectLocal(context.Background(), sys, s) })
 }

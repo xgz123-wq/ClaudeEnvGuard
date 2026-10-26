@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -183,6 +184,9 @@ func logCheck(rep model.Report, f *facts.Facts) {
 	s := rep.Summary
 	logx.Printf("检查完成：%s；用时 %dms；通过 %d 警告 %d 失败 %d 未知 %d；离线=%v；浏览器=%s",
 		s.Headline, rep.DurationMs, s.Pass, s.Warn, s.Fail, s.Unknown, rep.Offline, rep.SelectedBrowser)
+	if line := timingLine(f.Timings); line != "" {
+		logx.Printf("本地收集用时：%s", line)
+	}
 	for _, ex := range rep.Exits {
 		logx.Printf("出口 %s:%d 监听=%v IP=%s 国家=%s 可达=%s %s", ex.Entry, ex.Port, ex.Listening, ex.IP, ex.CountryCode, ex.Reach, ex.Err)
 	}
@@ -194,6 +198,20 @@ func logCheck(rep model.Report, f *facts.Facts) {
 	for name, msg := range f.Errors {
 		logx.Printf("收集器异常 %s：%s", name, msg)
 	}
+}
+
+// timingLine 把各收集器耗时按名字排成一行，例如「browsers 20ms；cli 1ms」。
+func timingLine(ts map[string]facts.CollectorTiming) string {
+	names := make([]string, 0, len(ts))
+	for n := range ts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, n := range names {
+		parts = append(parts, n+" "+ts[n].String())
+	}
+	return strings.Join(parts, "；")
 }
 
 // Backups 列出可还原的修复。

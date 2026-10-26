@@ -113,7 +113,7 @@ ceg update --check   # 只查三端版本
 
 ## 项目状态
 
-- **当前版本**：v2.5.0（2026-10-24），每个版本的 exe 都在 [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases)。
+- **当前版本**：v2.5.1（2026-10-26），每个版本的 exe 都在 [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases)。
 - **测试**：Go 单元测试覆盖检查判定、修复、还原、清理和更新查版本，系统调用全部走模拟对象，不碰真机；没有接 CI，由作者打包前在本机运行。
 - **维护方式**：作者自用，随分享包一起更新；没有固定的发版计划。
 

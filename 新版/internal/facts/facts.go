@@ -39,7 +39,8 @@ type Facts struct {
 	SystemDNS   *model.DNSLeak
 	IPv6        IPv6Facts
 
-	Errors map[string]string // 收集器名 → 异常
+	Errors  map[string]string          // 收集器名 → 异常
+	Timings map[string]CollectorTiming // 收集器名 → 本地阶段耗时
 }
 
 // PortOwner 是某个端口的监听者。
