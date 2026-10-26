@@ -106,7 +106,7 @@ func buildPlan(s situation, est map[string]float64, downloadMB float64, changedO
 	}
 	if s.Desktop {
 		steps = append(steps,
-			Step{ID: "download", Phase: 1, Name: "下载 Desktop 官方包", Detail: "约 " + itoa(int(downloadMB+0.5)) + " MB，经 43867 通道"},
+			Step{ID: "download", Phase: 1, Name: "下载 Desktop 官方包", Detail: "约 " + itoa(int(downloadMB+0.5)) + " MB，经 Desktop 专用端口"},
 			Step{ID: "inspect", Phase: 1, Name: "审核安装包", Detail: "签名、包家族、版本、架构"})
 	}
 	steps = append(steps, Step{ID: "hashes", Phase: 1, Name: "登记 4 个程序指纹", Detail: "文件变了必须有 Anthropic 签名"})

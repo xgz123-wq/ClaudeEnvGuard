@@ -3,8 +3,7 @@
 //	深度总检 —— 调 Claude环境一键总检.ps1 -ResultPath，读它写的 JSON，列出 PASS / WARN / FAIL / MANUAL；
 //	检查后启动 Desktop（英文） —— 先在后台跑 启动Claude英文浏览器.ps1 -CheckOnly，全部通过才按桌面快捷方式原样启动它。
 //
-// 和更新页一样只调用脚本、读脚本写的结果，不重写脚本里的判定。脚本找法与 internal/update 相同：
-// 桌面\AI应用开发 → 设置里的分享包目录 → 桌面\Claude环境分享版，取第一个存在的。
+// 和更新页一样只调用脚本、读脚本写的结果，不重写脚本里的判定。脚本找法与更新页共用 internal/scriptroot。
 package envscripts
 
 import (
@@ -18,6 +17,7 @@ import (
 
 	"ClaudeEnvGuard/internal/jsonx"
 	"ClaudeEnvGuard/internal/platform"
+	"ClaudeEnvGuard/internal/scriptroot"
 )
 
 // 脚本在项目目录里的相对位置。
@@ -47,20 +47,7 @@ func New(sys platform.OS, shareRoot string) *Runner {
 	if _, err := os.Stat(pwsh); err != nil {
 		pwsh = "pwsh.exe"
 	}
-	roots := []string{filepath.Join(p.Desktop, "AI应用开发")}
-	if shareRoot != "" {
-		roots = append(roots, shareRoot)
-	}
-	roots = append(roots, filepath.Join(p.Desktop, "Claude环境分享版"))
-	find := func(rel string) string {
-		for _, root := range roots {
-			if _, err := os.Stat(filepath.Join(root, rel)); err == nil {
-				return filepath.Join(root, rel)
-			}
-		}
-		return filepath.Join(roots[0], rel)
-	}
-	return &Runner{Sys: sys, Pwsh: pwsh, Deep: find(deepRel), Launcher: find(launcherRel),
+	return &Runner{Sys: sys, Pwsh: pwsh, Deep: scriptroot.Find(p, shareRoot, deepRel), Launcher: scriptroot.Find(p, shareRoot, launcherRel),
 		OutDir: filepath.Join(p.LocalAppData, "ClaudeEnvGuard", "深度总检"), DeepLimit: 3 * time.Minute, Now: time.Now}
 }
 

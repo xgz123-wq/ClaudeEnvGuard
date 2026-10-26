@@ -13,8 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"ClaudeEnvGuard/internal/appconfig"
 	"ClaudeEnvGuard/internal/logx"
 	"ClaudeEnvGuard/internal/platform"
+	"ClaudeEnvGuard/internal/scriptroot"
 )
 
 // Product 是三端之一的版本。
@@ -99,27 +101,14 @@ type runState struct {
 // scriptRel 是更新脚本在项目目录里的相对位置。
 var scriptRel = filepath.Join("docs", "配置", "Claude环境", "Desktop防护", "更新三端Claude.ps1")
 
-// New 按本机目录建 Runner。shareRoot 是设置里的分享包目录（可为空）。
-// 脚本按 桌面\AI应用开发 → 分享包目录 → 桌面\Claude环境分享版 的顺序找第一个存在的；
-// 本机的活动源是 AI应用开发，分享包里的副本只给别的电脑用。
+// New 按本机目录建 Runner。shareRoot 是设置里的分享包目录（可为空），脚本找法见 internal/scriptroot。
 func New(sys platform.OS, shareRoot string) *Runner {
 	p := sys.Paths()
 	pwsh := filepath.Join(p.ProgramFiles, "PowerShell", "7", "pwsh.exe")
 	if _, err := os.Stat(pwsh); err != nil {
 		pwsh = "pwsh.exe"
 	}
-	roots := []string{filepath.Join(p.Desktop, "AI应用开发")}
-	if shareRoot != "" {
-		roots = append(roots, shareRoot)
-	}
-	roots = append(roots, filepath.Join(p.Desktop, "Claude环境分享版"))
-	script := filepath.Join(roots[0], scriptRel)
-	for _, root := range roots {
-		if _, err := os.Stat(filepath.Join(root, scriptRel)); err == nil {
-			script = filepath.Join(root, scriptRel)
-			break
-		}
-	}
+	script := scriptroot.Find(p, shareRoot, scriptRel)
 	r := &Runner{
 		Sys:          sys,
 		Script:       script,
@@ -127,7 +116,7 @@ func New(sys platform.OS, shareRoot string) *Runner {
 		Root:         filepath.Join(p.LocalAppData, "ClaudeNetworkGuard"),
 		CheckDir:     filepath.Join(p.LocalAppData, "ClaudeEnvGuard", "更新检查"),
 		ChangedOnly:  true,
-		Proxy:        "http://127.0.0.1:43867",
+		Proxy:        fmt.Sprintf("http://127.0.0.1:%d", appconfig.DefaultPortDesktop), // 调用方按设置覆盖
 		Src:          DefaultSources,
 		CheckTimeout: 2 * time.Minute,
 		Now:          time.Now,

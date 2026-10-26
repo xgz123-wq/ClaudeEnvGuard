@@ -102,7 +102,7 @@
 - **只套界面**：`internal/envscripts` 调桌面两个图标背后的脚本，找脚本的顺序和更新页一样（`AI应用开发` → 设置里的分享包目录 → `桌面\Claude环境分享版`）。
 - **深度总检**：跑 `Claude环境一键总检.ps1 -ResultPath <文件>`，读它写的 JSON（字段同 Skill 版 `-Json`）；不带 `-OpenBrowser`，不打开浏览器。脚本太旧、没有 `-ResultPath` 时提示先同步脚本。
 - **英文启动器**：先跑 `启动Claude英文浏览器.ps1 -CheckOnly`，解析 `[PASS]` / `[BLOCK]` 行；有 `[BLOCK]` 就不启动并显示原因（例如 Claude Desktop 已在运行）。全部通过才按桌面快捷方式的目标和参数原样启动；没有快捷方式时用 `pwsh -NoProfile -File` 跑同一个脚本。
-- **五项自检**：逐项对比见 [五项自检对比.md](../历史/五项自检对比.md)；桌面图标都没删。
+- **五项自检**：2026-10-26 环境整合时桌面「Claude-五项自检」图标和脚本已删，卫士日常体检加深度总检覆盖它的全部内容；当时的逐项对比见 [五项自检对比.md](../历史/五项自检对比.md)。
 
 ## 界面结构（v2.2.0 起，照 [原型](../原型/环境卫士原型.html)）
 
@@ -136,7 +136,7 @@
 | 界面预览（模拟数据） | `cd frontend; npm run dev`，地址加 `?s=real` / `?s=fresh` / `?s=split` 切换体检场景，`?r=empty` 看空的记录页，`?u=update` / `cli` / `blocked` / `latest` / `neterr` / `fail` / `checkfail` / `unsafe` / `never` 切换更新页场景（`dev/*.json` 由 `ceg check --json` 生成，不入库） |
 
 - **开发规范**（分支、版本号、上线步骤）：见上级目录 [维护者指南.md](../维护者指南.md)。
-- **结构**：`internal/facts` 收集现场（只读）→ `internal/checks` 纯函数判定 → `internal/fixes` 计划/执行/还原 → `internal/engine` 串起来；`internal/update` 是更新页（只调三端更新脚本、读它写的记录）；`internal/records` 汇总记录页（只读）；`internal/envscripts` 调深度总检和英文启动器脚本；`app.go` + `frontend/` 是界面（`check.ts`、`update.ts`、`records.ts`、`settings.ts` 各管一页，`ctx.ts` 是页间共享状态），`cmd/ceg` 是命令行。所有系统调用都在 `internal/platform` 的 `OS` 接口后面，测试用 `Fake`。
+- **结构**：`internal/facts` 收集现场（只读）→ `internal/checks` 纯函数判定 → `internal/fixes` 计划/执行/还原 → `internal/engine` 串起来；`internal/update` 是更新页（只调三端更新脚本、读它写的记录）；`internal/records` 汇总记录页（只读）；`internal/envscripts` 调深度总检和英文启动器脚本；`internal/scriptroot` 是这两处和更新页共用的找脚本逻辑；`app.go` + `frontend/` 是界面（`check.ts`、`update.ts`、`records.ts`、`settings.ts` 各管一页，`ctx.ts` 是页间共享状态），`cmd/ceg` 是命令行。所有系统调用都在 `internal/platform` 的 `OS` 接口后面，测试用 `Fake`。
 - **工具链**：Go 1.27（`%LOCALAPPDATA%\Programs\go`）、Wails v2.14、Node 24。不要用 conda 的 python，也不需要 Python。
 
 ## 已知限制

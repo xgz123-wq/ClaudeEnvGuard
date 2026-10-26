@@ -153,7 +153,7 @@ func (r *Runner) desktopLatest(ctx context.Context, c *http.Client, arch string)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	resp, err := c.Do(req)
 	if err != nil {
-		return desktopLatest{}, fmt.Errorf("官方入口无响应；检查 43867 通道。（%v）", err)
+		return desktopLatest{}, fmt.Errorf("官方入口无响应；检查 Desktop 专用端口（%s）。（%v）", r.Proxy, err)
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	resp.Body.Close()

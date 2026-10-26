@@ -1027,7 +1027,7 @@ func (e *ev) desktop() {
 			if sigNote != "" {
 				r.Detail += "。另：" + sigNote
 			}
-			r.Advice = "按分享包「Desktop防护/更新三端Claude.ps1 -Action Plan」的提示补同步防护。"
+			r.Advice = "退出全部 Claude 后在「更新」页点一键更新（同分享包 Desktop防护/更新三端Claude.ps1），它会补同步防护。"
 		case !gd.HashChecked && e.pending:
 			r = e.netPending(r)
 			r.Detail = "正在核对程序文件哈希…"
