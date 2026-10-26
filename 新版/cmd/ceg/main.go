@@ -38,9 +38,9 @@ const usage = `Claude 环境卫士（命令行版） v%s
   ceg restore [--list] [--id 备份编号 [--items 动作id,...]]
       还原某次修复；不带 --id 时还原最近一次；--items 只还原其中几项（动作 id 见 --list）。
   ceg records [--json]
+      只读：列出「记录」页的修复、还原、更新、清理。
   ceg deep    [--json]
       只读：跑桌面「Claude-环境一键总检」脚本（约 15 秒），列出 PASS / WARN / FAIL / MANUAL。
-      只读：列出「记录」页的修复、还原、更新、清理。
   ceg clean   code|desktop|browser [--browser 名字] --plan|--yes [--json]
       清理登录数据。先用 --plan 看清单，确认后再用 --yes 执行。
   ceg update  --check [--json] [--script]
