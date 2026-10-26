@@ -126,7 +126,7 @@ All commands and exit codes: [新版/README.md (命令行)](新版/README.md#命
 | Every check, CLI, data locations, Update page details | [新版/README.md](新版/README.md) |
 | Changing code, building, releasing, rolling back | [维护者指南.md](维护者指南.md) |
 | Recent changes and what is still unverified | [维护记录.md](维护记录.md) |
-| Original design requirements | [重构需求.md](重构需求.md), [更新并入需求.md](更新并入需求.md) |
+| Finished requirements, comparisons and retrospectives (archive) | [历史/](历史/) |
 
 ---
 
