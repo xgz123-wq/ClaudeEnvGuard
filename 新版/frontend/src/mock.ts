@@ -130,7 +130,6 @@ const listeners: Record<string, ((d: unknown) => void)[]> = {};
         return { ok: false, started: false, script: 'x', message: '请先完全退出 Claude Desktop，再使用这个入口。已有进程不会重新加载语言参数。',
           lines: ['[PASS] 固定代理：HKLM 策略 -> http://127.0.0.1:43867', '[BLOCK] 请先完全退出 Claude Desktop，再使用这个入口。已有进程不会重新加载语言参数。'] };
       },
-      PickDir: async () => 'C:\\Users\\x\\Desktop\\Claude环境分享版',
       CleanPlan: async () => clean,
       Clean: async () => { await sleep(500); return { ok: true, removed: ['x'], errors: [], message: '已清理 1 项。', logPath: L + '\\ClaudeEnvGuard\\记录\\清理-x.json' }; },
       SaveSettings: async () => '',

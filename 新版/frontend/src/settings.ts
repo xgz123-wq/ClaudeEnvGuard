@@ -6,6 +6,8 @@ import { $, esc, toast } from './util';
 
 let root: HTMLElement;
 let back: Page = 'check';
+// 旧版设置里手填过分享包目录时，设置页只给「清除」，清除后按部署清单找（重开卫士后更新页、深度总检、英文启动也跟上）。
+let clearRoot = false;
 let browsers: () => string[] = () => [];
 
 export function mountSettings(el: HTMLElement, listBrowsers: () => string[]) {
@@ -17,6 +19,7 @@ export function mountSettings(el: HTMLElement, listBrowsers: () => string[]) {
 // showSettings 每次进设置页都按当前设置重画，没保存的改动不留。
 export function showSettings(from: Page) {
   if (from !== 'settings') back = from;
+  clearRoot = false;
   const init = ctx.init;
   if (!init) {
     root.innerHTML = '<div class="set-wrap"><div class="g-loading">还在读设置…</div></div>';
@@ -53,9 +56,9 @@ export function showSettings(from: Page) {
         ${field('地区', `<select id="st-region">${regions}</select>`)}</section>
       <section class="set-group"><span class="set-gh"><b>专用浏览器</b><span>体检默认查哪一个；打开、复核时先进哪个网址</span></span>
         ${field('默认检查', `<select id="st-browser">${brOpts}</select>`)}${field('起始网址', `<input id="st-url" value="${esc(s.startUrl)}" placeholder="${defaultStartUrl}">`)}</section>
-      <section class="set-group"><span class="set-gh"><b>分享包</b><span>读「直连防护」状态、找三端更新脚本；留空 = 按部署清单，没有清单时在桌面和「文档」里找</span></span>
-        ${field('分享包目录', `<input id="st-root" value="${esc(s.sharePackageRoot)}" placeholder="留空 = 按部署清单">`, '<button class="btn small ghost" data-act="pick">选…</button>')}
-        ${field('当前使用', `<span class="mono set-path" title="${esc(init.shareRoot ?? '')}">${esc(init.shareRoot || '没找到分享包')}</span>`)}</section>
+      <section class="set-group"><span class="set-gh"><b>分享包</b><span>读「直连防护」状态、找三端更新脚本；由一键总检登记进部署清单，不用手填</span></span>
+        ${field('当前使用', `<span class="mono set-path" title="${esc(init.shareRoot ?? '')}">${esc(init.shareRoot || '没找到分享包，跑一次分享包的一键总检')}</span>`)}
+        ${s.sharePackageRoot ? field('旧版手填', `<span class="mono set-path" title="${esc(s.sharePackageRoot)}">${esc(s.sharePackageRoot)}（优先于部署清单）</span>`, '<button class="btn small ghost" data-act="clear-root">清除</button>') : ''}</section>
       <section class="set-group wide"><span class="set-gh"><b>数据放在哪</b><span>都在本机，不上传</span></span>
         ${path('设置', p?.settings, dirOf(p?.settings))}${path('修复备份', p?.backups, p?.backups)}${path('清理记录', p?.records, p?.records)}
         ${path('运行日志', p?.logs, p?.logs, '（保留 7 天）')}${path('更新记录', p?.updates ? p.updates + '\\更新记录-*' : '', p?.updates)}</section>
@@ -88,11 +91,11 @@ async function onClick(e: MouseEvent) {
       ($('#st-url', root) as HTMLInputElement).value = init.defaults.startUrl || defaultStartUrl;
       toast('已填回默认值，点「保存并重新检查」才生效', 'info');
       return;
-    case 'pick': {
-      const dir = await api.pickDir('选择分享包目录（Claude环境分享版）');
-      if (dir) ($('#st-root', root) as HTMLInputElement).value = dir;
+    case 'clear-root':
+      clearRoot = true;
+      b.closest('.set-field')?.remove();
+      toast('点「保存并重新检查」后清除；更新页、深度总检、英文启动在重开卫士后跟上', 'info');
       return;
-    }
     case 'cli':
       await api.copy('ceg check            全量检查\nceg fix --plan       只列修复计划\nceg restore --list   列出修复备份（含每一项）\nceg restore --id <备份> --items <动作id,...>   按项还原\nceg records          列出记录\nceg update --check   查三端版本\nceg clean code --plan  列清理清单');
       toast('已复制：ceg check / ceg fix --plan / ceg restore / ceg records / ceg update --check', 'ok');
@@ -103,7 +106,7 @@ async function onClick(e: MouseEvent) {
         regionOverride: ($('#st-region', root) as HTMLSelectElement).value,
         selectedBrowser: ($('#st-browser', root) as HTMLSelectElement).value || init.settings.selectedBrowser,
         startUrl: val('#st-url'),
-        sharePackageRoot: val('#st-root'),
+        sharePackageRoot: clearRoot ? '' : init.settings.sharePackageRoot,
       };
       const err = await api.saveSettings(next);
       if (err) {

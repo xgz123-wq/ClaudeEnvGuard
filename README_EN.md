@@ -53,6 +53,7 @@ Env Guard turns these into 30 checks across five groups — route, dedicated bro
 2. Run `ClaudeEnvGuard.exe`. The binaries are not code-signed, so SmartScreen may warn you; choose "More info → Run anyway".
 3. Checks start automatically. All green means nothing to do; otherwise click "一键修复" (Fix), review the plan, tick what you want and run it.
 
+- **Deployed with the share pack? Nothing to download**: when an AI deploys the [share pack](https://github.com/xgz123-wq/claude-env-share) per its AGENTS.md, it downloads these two exes into the share pack's folder and creates the "Claude 环境卫士" desktop shortcut; the guard finds the share pack through the deployment manifest, nothing to fill in.
 - **No install**: both exes are standalone — no Python or Node. The GUI uses the WebView2 runtime that ships with Windows; the CLI does not need it.
 - **No admin by default**: only time zone, IPv6 and the Desktop proxy policy need elevation, and you confirm a single UAC prompt.
 
@@ -63,7 +64,7 @@ Env Guard turns these into 30 checks across five groups — route, dedicated bro
 | Check (体检) | 30 checks; one-click fix, deep check, open the dedicated browser for a manual look, clear sign-in data |
 | Update (更新) | Looks up new versions of Desktop, CLI and the VS Code extension (about 2 s) and updates them with progress |
 | Records (记录) | Fixes, restores, updates and clean-ups in time order with "before → after"; undo only the fix items you tick |
-| ⚙ Settings | Ports (read-only, from the deployment manifest), target region, dedicated browser and start page, share-pack folder, data locations |
+| ⚙ Settings | Ports and the share pack in use (both read-only, from the deployment manifest), target region, dedicated browser and start page, data locations |
 
 A clickable prototype with mock data lives in [原型/](原型/); download it and open the HTML file.
 
@@ -80,7 +81,7 @@ The exe handles checks, fixes, restores and clean-ups on its own. The three feat
 | Pre-checked Desktop launch in English | `docs\配置\Claude环境\启动Claude英文浏览器.ps1` |
 
 - **Deployment manifest**: every run of the share pack's full check writes the three ports (read from Clash), its own location and the registered dedicated browsers to `%LOCALAPPDATA%\ClaudeNetworkGuard\部署清单.json`; the guard only reads it and still verifies every item. Ports come from the manifest and are read-only in Settings: change them in Clash, then run the full check once. Without the share pack you can hand-write this file following the share pack's `部署清单.示例.json`.
-- **Where it looks**: the share-pack folder set in ⚙ Settings, then the script root in the deployment manifest, then `Desktop\AI应用开发`, `Desktop\Claude环境分享版`, then first-level folders on the Desktop and in Documents; the first match wins, and Settings shows which copy is in use. The direct-connection guard status (D3) uses the same lookup.
+- **Where it looks**: nothing to fill in. The script root in the deployment manifest (a folder typed into Settings by an older version wins and can be cleared there), then `Desktop\AI应用开发`, `Desktop\Claude环境分享版`, then first-level folders on the Desktop and in Documents; the first match wins, and Settings shows which copy is in use. The direct-connection guard status (D3) uses the same lookup.
 - **Version check**: done by the program itself over the network, but it first confirms the update script exists and fails if it does not.
 - **Also needed**: PowerShell 7 (`pwsh`), which the share pack already requires.
 
@@ -116,7 +117,7 @@ All commands and exit codes: [新版/README.md (命令行)](新版/README.md#命
 
 ## Project status
 
-- **Current version**: v2.5.1 (2026-10-26); every version's exes are on [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases).
+- **Current version**: v2.6.1 (2026-10-27); every version's exes are on [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases).
 - **Tests**: Go unit tests cover check logic, fixes, restores, clean-ups and the version check, with all system calls behind a fake; there is no CI — the author runs them locally before each build.
 - **Maintenance**: built for the author's own use and updated alongside the share pack; no fixed release schedule.
 

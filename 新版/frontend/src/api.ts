@@ -36,7 +36,6 @@ export const api = {
     }
   },
   records: async (): Promise<LogRecord[]> => ((await App.Records()) as unknown as LogRecord[]) ?? [],
-  pickDir: (title: string) => App.PickDir(title) as Promise<string>,
   // 深度总检约 15 秒；检查后启动 Desktop（英文）先只检查，全部通过才启动
   deepCheck: async (): Promise<DeepResult> => {
     try {
