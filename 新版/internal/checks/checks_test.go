@@ -400,3 +400,23 @@ func TestGuardEvidence(t *testing.T) {
 		t.Errorf("插件更新应警告且只点名插件：%+v", m["D3"])
 	}
 }
+
+// B1 和部署清单：登记的快捷方式不见了要说清是哪个；标准目录下没登记的仍通过，只提示跑总检登记。
+func TestBrowserManifestHints(t *testing.T) {
+	f := goodFacts(t)
+	f.ManifestFound = true
+	m := byID(Evaluate(f, ResolveTarget(f)))
+	if m["B1"].Status != model.Pass || !strings.Contains(m["B1"].Detail, "还没登记进部署清单") {
+		t.Errorf("没登记的标准浏览器应通过并提示登记：%+v", m["B1"])
+	}
+	f.Browsers[0].Registered = true
+	m = byID(Evaluate(f, ResolveTarget(f)))
+	if m["B1"].Status != model.Pass || strings.Contains(m["B1"].Detail, "部署清单") {
+		t.Errorf("已登记的不应再提示：%+v", m["B1"])
+	}
+	f.Browsers[0].Shortcuts, f.Browsers[0].MissingShortcut = nil, `C:\U\Desktop\KK-Claude-专用Chrome.lnk`
+	m = byID(Evaluate(f, ResolveTarget(f)))
+	if m["B1"].Status != model.Fail || !strings.Contains(m["B1"].Detail, "KK-Claude-专用Chrome.lnk") || m["B1"].FixID != FixBrowserShortcut {
+		t.Errorf("登记的快捷方式不见了应失败并说出路径：%+v", m["B1"])
+	}
+}

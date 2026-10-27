@@ -50,14 +50,29 @@ func InitLog(sys platform.OS, who string) {
 	logx.Init(appconfig.Dir(sys.Paths().LocalAppData), who)
 }
 
-// Settings 读设置；note 非空表示设置文件有问题已回退默认值。
+// Settings 读设置，端口按部署清单覆盖；note 非空表示设置文件或部署清单有问题、已回退。
 func (e *Engine) Settings() (appconfig.Settings, string) {
-	return appconfig.Load(e.Sys.Paths().LocalAppData)
+	s, note, _ := e.SettingsWithPortSource()
+	return s, note
 }
 
-// SaveSettings 保存设置。
+// SettingsWithPortSource 同 Settings，另返回端口来源（部署清单 / 设置文件 / 默认值），设置页显示用。
+func (e *Engine) SettingsWithPortSource() (appconfig.Settings, string, string) {
+	la := e.Sys.Paths().LocalAppData
+	s, note := appconfig.Load(la)
+	source, mnote := appconfig.ApplyManifest(&s, la)
+	if mnote != "" {
+		note = strings.TrimPrefix(note+"；"+mnote, "；")
+	}
+	return s, note, source
+}
+
+// SaveSettings 保存设置。端口只读：不管传进来的是什么，都保留设置文件里原来的值（没有清单时的旧值）。
 func (e *Engine) SaveSettings(s appconfig.Settings) error {
-	return appconfig.Save(e.Sys.Paths().LocalAppData, s)
+	la := e.Sys.Paths().LocalAppData
+	cur, _ := appconfig.Load(la)
+	s.PortCLI, s.PortBrowser, s.PortDesktop = cur.PortCLI, cur.PortBrowser, cur.PortDesktop
+	return appconfig.Save(la, s)
 }
 
 // CheckOptions 是一次检查的参数。

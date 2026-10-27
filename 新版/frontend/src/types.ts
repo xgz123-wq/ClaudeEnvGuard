@@ -103,8 +103,9 @@ export interface Settings {
   selectedBrowser: string; regionOverride: string; sharePackageRoot: string; startUrl: string;
 }
 export interface RegionChoice { id: string; label: string; countryCode: string; iana: string }
-export interface DataPaths { settings: string; backups: string; logs: string; records: string; updates: string }
-export interface InitState { version: string; settings: Settings; note: string; regions: RegionChoice[]; isAdmin: boolean; logDir?: string; defaults: Settings; paths?: DataPaths }
+export interface DataPaths { settings: string; backups: string; logs: string; records: string; updates: string; manifest?: string }
+// portSource：三个端口的来源（部署清单 / 设置文件 / 默认值），设置页只读；shareRoot：实际找到的分享包，空 = 没找到。
+export interface InitState { version: string; settings: Settings; note: string; regions: RegionChoice[]; isAdmin: boolean; logDir?: string; defaults: Settings; paths?: DataPaths; portSource?: string; shareRoot?: string }
 
 // ---------------------------------------------------------------- 深度总检、英文启动器（Go 端 internal/envscripts）
 

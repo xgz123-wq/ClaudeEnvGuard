@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ClaudeEnvGuard/internal/platform"
+	"ClaudeEnvGuard/internal/scriptroot"
 )
 
 // 测试不跑真脚本：Fake.RunFunc 按参数把脚本会写的记录文件写到磁盘上，Runner 只读这些文件。
@@ -311,17 +312,23 @@ func TestCheckMissingScript(t *testing.T) {
 	}
 }
 
+// 找法见 internal/scriptroot：设置 → 部署清单 → 桌面\AI应用开发 → 桌面\Claude环境分享版；这里只验更新页用的是同一套。
 func TestNewPrefersActiveProject(t *testing.T) {
 	sys := platform.NewFake(t.TempDir())
 	share := filepath.Join(sys.P.Desktop, "Claude环境分享版")
+	writeFile(t, filepath.Join(scriptroot.DocDir(share), "README.md"), "#")
 	writeFile(t, filepath.Join(share, scriptRel), "#")
 	if r := New(sys, ""); r.Script != filepath.Join(share, scriptRel) {
 		t.Errorf("只有分享包时用分享包：%s", r.Script)
 	}
 	active := filepath.Join(sys.P.Desktop, "AI应用开发")
+	writeFile(t, filepath.Join(scriptroot.DocDir(active), "README.md"), "#")
 	writeFile(t, filepath.Join(active, scriptRel), "#")
-	if r := New(sys, share); r.Script != filepath.Join(active, scriptRel) {
-		t.Errorf("两份都在时用 AI应用开发（活动源）：%s", r.Script)
+	if r := New(sys, ""); r.Script != filepath.Join(active, scriptRel) {
+		t.Errorf("两份都在、没手填时用 AI应用开发（活动源）：%s", r.Script)
+	}
+	if r := New(sys, share); r.Script != filepath.Join(share, scriptRel) {
+		t.Errorf("设置里手填的分享包最优先：%s", r.Script)
 	}
 }
 

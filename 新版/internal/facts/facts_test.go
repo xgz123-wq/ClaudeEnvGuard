@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"ClaudeEnvGuard/internal/appconfig"
+	"ClaudeEnvGuard/internal/manifest"
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/netprobe"
 	"ClaudeEnvGuard/internal/platform"
@@ -54,7 +55,7 @@ func TestBrowserDiscovery(t *testing.T) {
 		{PID: 10, Name: "chrome.exe", CmdLine: `chrome.exe --user-data-dir="` + kk + `" --proxy-server=socks5://127.0.0.1:43866`},
 		{PID: 11, Name: "chrome.exe", CmdLine: `chrome.exe --type=renderer --user-data-dir="` + kk + `"`},
 	}
-	list, sel := collectBrowsers(fk, appconfig.Defaults(), procs)
+	list, sel := collectBrowsers(fk, appconfig.Defaults(), procs, nil)
 	names := []string{}
 	for _, b := range list {
 		names = append(names, b.Name)
@@ -70,7 +71,7 @@ func TestBrowserDiscovery(t *testing.T) {
 	}
 	s := appconfig.Defaults()
 	s.SelectedBrowser = "账号1"
-	if _, sel := collectBrowsers(fk, s, nil); sel.Name != "账号1" {
+	if _, sel := collectBrowsers(fk, s, nil, nil); sel.Name != "账号1" {
 		t.Errorf("应尊重设置里选中的浏览器")
 	}
 }
@@ -284,5 +285,51 @@ func TestHashGuardTargetsSignature(t *testing.T) {
 	HashGuardTargets(context.Background(), sys, &g)
 	if g.Targets[0].Changed || g.Targets[0].AcceptedBySignature {
 		t.Errorf("哈希一致应直接通过，不算签名放行：%+v", g.Targets[0])
+	}
+}
+
+// 部署清单登记的浏览器：标记已登记；快捷方式不在桌面时按清单路径读；文件没了记下来；没登记的照常列出。
+func TestBrowserDiscoveryWithManifest(t *testing.T) {
+	fk := platform.NewFake(t.TempDir())
+	root := StandardRoot(fk.P)
+	kk := filepath.Join(root, "KK-Claude", "UserData")
+	gone := filepath.Join(root, "已删图标", "UserData")
+	moved := filepath.Join(root, "挪走了", "UserData")
+	extra := filepath.Join(root, "没登记", "UserData")
+	for _, d := range []string{kk, gone, moved, extra} {
+		write(t, filepath.Join(d, "Local State"), "{}")
+	}
+	args := func(ud string) string {
+		return `--user-data-dir="` + ud + `" --proxy-server="socks5://127.0.0.1:43866"`
+	}
+	kkLnk := filepath.Join(fk.P.Desktop, "KK-Claude-专用Chrome.lnk")
+	movedLnk := filepath.Join(fk.P.Home, "图标", "挪走了.lnk")
+	_ = fk.WriteShortcut(platform.Shortcut{Path: kkLnk, Target: `C:\chrome.exe`, Args: args(kk)})
+	_ = fk.WriteShortcut(platform.Shortcut{Path: movedLnk, Target: `C:\chrome.exe`, Args: args(moved)})
+	_ = fk.WriteShortcut(platform.Shortcut{Path: filepath.Join(fk.P.Desktop, "没登记.lnk"), Target: `C:\chrome.exe`, Args: args(extra)})
+	m := &manifest.Manifest{Browsers: []manifest.Browser{
+		{Alias: "KK-Claude", UserDataDir: kk, Shortcut: kkLnk},
+		{Alias: "已删图标", UserDataDir: gone, Shortcut: filepath.Join(fk.P.Desktop, "已删图标.lnk")},
+		{Alias: "挪走了", UserDataDir: moved, Shortcut: movedLnk},
+	}}
+	list, _ := collectBrowsers(fk, appconfig.Defaults(), nil, m)
+	got := map[string]Browser{}
+	for _, b := range list {
+		got[b.Name] = b
+	}
+	if len(list) != 4 {
+		t.Fatalf("应列出 4 个：%v", got)
+	}
+	if b := got["KK-Claude"]; !b.Registered || len(b.Shortcuts) != 1 || b.MissingShortcut != "" {
+		t.Errorf("桌面上的登记浏览器只算一个快捷方式：%+v", b)
+	}
+	if b := got["已删图标"]; !b.Registered || len(b.Shortcuts) != 0 || b.MissingShortcut == "" {
+		t.Errorf("登记的快捷方式没了要记下来：%+v", b)
+	}
+	if b := got["挪走了"]; !b.Registered || len(b.Shortcuts) != 1 {
+		t.Errorf("登记的快捷方式不在桌面时按清单路径读：%+v", b)
+	}
+	if b := got["没登记"]; b.Registered || len(b.Shortcuts) != 1 {
+		t.Errorf("桌面上没登记的照常列出：%+v", b)
 	}
 }

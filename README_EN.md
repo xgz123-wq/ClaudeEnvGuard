@@ -1,4 +1,4 @@
-<!-- README_SYNC: source=working-tree; updated=2026-10-26 -->
+<!-- README_SYNC: source=working-tree; updated=2026-10-27 -->
 <p align="center">
   <a href="./README.md">简体中文</a> · English
 </p>
@@ -43,7 +43,7 @@ Env Guard turns these into 30 checks across five groups — route, dedicated bro
 | Your situation | Will it work? |
 |---|---|
 | You deployed the [share pack](https://github.com/xgz123-wq/claude-env-share) | ✅ Every feature works; this is the setup it was designed for |
-| You built a similar Clash Verge setup with a dedicated port per entry point | ⚠️ Checks and fixes work after you set your ports in ⚙ Settings; update, deep check and English launch do not |
+| You built a similar Clash Verge setup with a dedicated port per entry point | ⚠️ Checks and fixes work; if your ports differ from the defaults, hand-write a deployment manifest (format below); update, deep check and English launch do not |
 | Nothing is set up yet and you want a one-click way to reach Claude | ❌ It does not build the environment or provide a proxy. Start with the [share pack](https://github.com/xgz123-wq/claude-env-share) |
 | macOS / Linux | ❌ Windows only |
 
@@ -63,7 +63,7 @@ Env Guard turns these into 30 checks across five groups — route, dedicated bro
 | Check (体检) | 30 checks; one-click fix, deep check, open the dedicated browser for a manual look, clear sign-in data |
 | Update (更新) | Looks up new versions of Desktop, CLI and the VS Code extension (about 2 s) and updates them with progress |
 | Records (记录) | Fixes, restores, updates and clean-ups in time order with "before → after"; undo only the fix items you tick |
-| ⚙ Settings | Ports, target region, dedicated browser and start page, share-pack folder, data locations |
+| ⚙ Settings | Ports (read-only, from the deployment manifest), target region, dedicated browser and start page, share-pack folder, data locations |
 
 A clickable prototype with mock data lives in [原型/](原型/); download it and open the HTML file.
 
@@ -79,7 +79,8 @@ The exe handles checks, fixes, restores and clean-ups on its own. The three feat
 | Deep check | `docs\配置\Claude环境\Claude环境一键总检.ps1` |
 | Pre-checked Desktop launch in English | `docs\配置\Claude环境\启动Claude英文浏览器.ps1` |
 
-- **Where it looks**: `Desktop\AI应用开发`, then the share-pack folder set in ⚙ Settings, then `Desktop\Claude环境分享版`; the first match wins. If the share pack lives elsewhere, set its root folder in Settings.
+- **Deployment manifest**: every run of the share pack's full check writes the three ports (read from Clash), its own location and the registered dedicated browsers to `%LOCALAPPDATA%\ClaudeNetworkGuard\部署清单.json`; the guard only reads it and still verifies every item. Ports come from the manifest and are read-only in Settings: change them in Clash, then run the full check once. Without the share pack you can hand-write this file following the share pack's `部署清单.示例.json`.
+- **Where it looks**: the share-pack folder set in ⚙ Settings, then the script root in the deployment manifest, then `Desktop\AI应用开发`, `Desktop\Claude环境分享版`, then first-level folders on the Desktop and in Documents; the first match wins, and Settings shows which copy is in use. The direct-connection guard status (D3) uses the same lookup.
 - **Version check**: done by the program itself over the network, but it first confirms the update script exists and fails if it does not.
 - **Also needed**: PowerShell 7 (`pwsh`), which the share pack already requires.
 
@@ -107,7 +108,7 @@ All commands and exit codes: [新版/README.md (命令行)](新版/README.md#命
 
 | Question | Answer |
 |---|---|
-| Everything is "Fail" or "Unknown" | Usually the proxy client is not running, or your ports differ from the defaults 43865 / 43866 / 43867; change them in ⚙ Settings and it re-checks |
+| Everything is "Fail" or "Unknown" | Usually the proxy client is not running, or your ports differ from the deployment manifest (defaults 43865 / 43866 / 43867 without one); run the share pack's full check once to refresh the manifest, then check again |
 | Is it Clash Verge only? | Generic items such as ports, exits and DNS work with any proxy client; only P2 (Clash config) reads Clash Verge Rev |
 | All green means I am safe? | It checks launch flags and system settings. For WebRTC and in-page JS time zone, the final word is opening `ip.net.coffee/claude/` in the dedicated browser; the Check page has a button for that |
 | My antivirus flags it | Unsigned Go binaries occasionally trigger false positives; if in doubt, build from source with the [maintainer guide](维护者指南.md) |

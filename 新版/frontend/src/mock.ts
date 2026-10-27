@@ -93,7 +93,7 @@ const listeners: Record<string, ((d: unknown) => void)[]> = {};
   main: {
     App: {
       Init: async () => ({ version: '2.2.0', logDir: L + '\\ClaudeEnvGuard\\日志',
-        paths: { settings: L + '\\ClaudeEnvGuard\\设置.json', backups: L + '\\ClaudeEnvGuard\\备份', logs: L + '\\ClaudeEnvGuard\\日志', records: L + '\\ClaudeEnvGuard\\记录', updates: L + '\\ClaudeNetworkGuard' }, settings: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, selectedBrowser: 'KK-Claude', regionOverride: '', sharePackageRoot: '', startUrl: 'https://ip.net.coffee/claude/' }, note: '', regions: [{ id: 'us-west', label: '美国西部（洛杉矶）', countryCode: 'US', iana: 'America/Los_Angeles' }], isAdmin: false, defaults: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, startUrl: 'https://ip.net.coffee/claude/' } }),
+        paths: { settings: L + '\\ClaudeEnvGuard\\设置.json', backups: L + '\\ClaudeEnvGuard\\备份', logs: L + '\\ClaudeEnvGuard\\日志', records: L + '\\ClaudeEnvGuard\\记录', updates: L + '\\ClaudeNetworkGuard', manifest: L + '\\ClaudeNetworkGuard\\部署清单.json' }, settings: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, selectedBrowser: 'KK-Claude', regionOverride: '', sharePackageRoot: '', startUrl: 'https://ip.net.coffee/claude/' }, note: '', regions: [{ id: 'us-west', label: '美国西部（洛杉矶）', countryCode: 'US', iana: 'America/Los_Angeles' }], isAdmin: false, portSource: '部署清单', shareRoot: L.replace(/\\AppData\\Local$/, '\\Desktop\\AI应用开发'), defaults: { portCli: 43865, portBrowser: 43866, portDesktop: 43867, startUrl: 'https://ip.net.coffee/claude/' } }),
       Check: async () => {
         const full = build();
         const partial = clone(full);

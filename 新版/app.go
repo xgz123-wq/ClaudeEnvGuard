@@ -16,8 +16,10 @@ import (
 	"ClaudeEnvGuard/internal/fixes"
 	"ClaudeEnvGuard/internal/geo"
 	"ClaudeEnvGuard/internal/logx"
+	"ClaudeEnvGuard/internal/manifest"
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/report"
+	"ClaudeEnvGuard/internal/scriptroot"
 	"ClaudeEnvGuard/internal/update"
 	"ClaudeEnvGuard/internal/version"
 )
@@ -55,6 +57,10 @@ type InitState struct {
 	LogDir   string             `json:"logDir"`
 	Defaults appconfig.Settings `json:"defaults"`
 	Paths    DataPaths          `json:"paths"`
+	// PortSource 是三个端口的来源（部署清单 / 设置文件 / 默认值）；设置页端口只读。
+	PortSource string `json:"portSource"`
+	// ShareRoot 是按 internal/scriptroot 实际找到的分享包；空 = 没找到。
+	ShareRoot string `json:"shareRoot"`
 }
 
 // DataPaths 是设置页「数据放在哪」的各个位置。
@@ -62,17 +68,20 @@ type DataPaths struct {
 	Settings string `json:"settings"`
 	Backups  string `json:"backups"`
 	Logs     string `json:"logs"`
-	Records  string `json:"records"` // 清理留痕
-	Updates  string `json:"updates"` // 三端更新脚本的 更新记录-* 所在目录
+	Records  string `json:"records"`  // 清理留痕
+	Updates  string `json:"updates"`  // 三端更新脚本的 更新记录-* 所在目录
+	Manifest string `json:"manifest"` // 分享包脚本写的部署清单
 }
 
 // Init 返回版本、设置和可选地区。
 func (a *App) Init() InitState {
-	s, note := a.eng.Settings()
-	la := a.eng.Sys.Paths().LocalAppData
+	s, note, portSource := a.eng.SettingsWithPortSource()
+	p := a.eng.Sys.Paths()
+	la := p.LocalAppData
 	paths := DataPaths{Settings: filepath.Join(appconfig.Dir(la), "设置.json"), Backups: fixes.BackupRoot(la), Logs: logx.Dir(),
-		Records: cleanup.LogDir(la), Updates: filepath.Join(la, "ClaudeNetworkGuard")}
-	return InitState{Version: version.Version, Settings: s, Note: note, Regions: geo.Choices, IsAdmin: a.eng.Sys.IsAdmin(), LogDir: logx.Dir(), Defaults: appconfig.Defaults(), Paths: paths}
+		Records: cleanup.LogDir(la), Updates: filepath.Join(la, "ClaudeNetworkGuard"), Manifest: manifest.Path(la)}
+	return InitState{Version: version.Version, Settings: s, Note: note, Regions: geo.Choices, IsAdmin: a.eng.Sys.IsAdmin(), LogDir: logx.Dir(), Defaults: appconfig.Defaults(), Paths: paths,
+		PortSource: portSource, ShareRoot: scriptroot.Root(p, s.SharePackageRoot)}
 }
 
 // Check 跑一次检查。本地阶段完成后通过事件 "report" 推送一份未完成报告，最终结果作为返回值。

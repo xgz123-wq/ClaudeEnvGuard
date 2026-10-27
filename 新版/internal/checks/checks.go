@@ -128,7 +128,7 @@ func (e *ev) overview() {
 	case listening < 3:
 		r.Status = model.Fail
 		r.Detail = "部分端口没开，对应入口会连不上或直连。"
-		r.Advice = "确认 Clash Verge 已导入分享包的「Clash全局账号通道.js」并重新加载配置；端口号和本工具设置里的一致。"
+		r.Advice = "确认 Clash Verge 已导入分享包的「Clash全局账号通道.js」并重新加载配置；端口号和部署清单一致（清单由一键总检从 Clash 刷新）。"
 	case unknownOwner != "":
 		r.Status = model.Warn
 		r.Detail = "端口被 " + unknownOwner + " 占用，它不像常见代理客户端。"
@@ -165,7 +165,7 @@ func (e *ev) overview() {
 		if f.Proxy.MixedPort != 0 {
 			cur = append(cur, "混合端口 "+strconv.Itoa(f.Proxy.MixedPort))
 			if f.Proxy.MixedPort != s.PortCLI {
-				fails = append(fails, fmt.Sprintf("混合端口是 %d，CLI 端口设置是 %d", f.Proxy.MixedPort, s.PortCLI))
+				fails = append(fails, fmt.Sprintf("混合端口是 %d，部署清单里的通用端口是 %d", f.Proxy.MixedPort, s.PortCLI))
 			}
 		}
 		if f.Proxy.Listeners != nil {
@@ -179,7 +179,7 @@ func (e *ev) overview() {
 		switch {
 		case len(fails) > 0:
 			r.Status, r.Detail = model.Fail, strings.Join(append(fails, warns...), "；")
-			r.Advice = "在 Clash Verge 里确认导入了分享包的全局脚本，混合端口改成和本工具一致，然后重新加载。"
+			r.Advice = "在 Clash Verge 里确认导入了分享包的全局脚本，混合端口和部署清单一致；改了 Clash 端口后跑一次一键总检刷新清单。"
 		case len(warns) > 0:
 			r.Status, r.Detail = model.Warn, strings.Join(warns, "；")
 			r.Advice = "在 Clash Verge 设置里打开「虚拟网卡模式（TUN）」，关闭「系统代理」。"
@@ -437,6 +437,9 @@ func (e *ev) browser() {
 	case len(b.Shortcuts) == 0:
 		r.Status = model.Fail
 		r.Detail = "数据目录在，但桌面上没有它的快捷方式，只能从别处打开，容易漏掉防护参数。"
+		if b.MissingShortcut != "" {
+			r.Detail = "部署清单登记的快捷方式「" + b.MissingShortcut + "」不见了（被删或改名），数据目录还在。"
+		}
 		r.Advice = "点「一键修复」重新生成桌面快捷方式。"
 		r.FixID = FixBrowserShortcut
 	case len(b.DuplicateOf) > 0:
@@ -451,6 +454,8 @@ func (e *ev) browser() {
 		}
 		if !b.Standard {
 			r.Detail += "目录不在标准位置 ClaudeAccountBrowsers 下，也可以正常使用。"
+		} else if f.ManifestFound && !b.Registered {
+			r.Detail += "还没登记进部署清单，跑一次一键总检会登记。"
 		}
 	}
 	e.add(r)

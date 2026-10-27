@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"ClaudeEnvGuard/internal/manifest"
 )
 
 // 分享包约定的默认端口。
@@ -99,6 +101,33 @@ func Load(localAppData string) (Settings, string) {
 		return d, "设置里的端口无效（" + err.Error() + "），已恢复默认端口"
 	}
 	return s, ""
+}
+
+// 端口来源。端口以部署清单为准（清单从 Clash 抄来）；卫士不提供改端口的入口，改端口在 Clash 里改、再跑一次一键总检刷新清单。
+const (
+	PortFromManifest = "部署清单"
+	PortFromSettings = "设置文件"
+	PortFromDefault  = "默认值"
+)
+
+// ApplyManifest 用部署清单里的三个端口覆盖 s 的端口，返回端口来源；清单在但读不了或端口无效时 note 说明原因。
+// 没有清单时保留 s 原来的端口（设置文件里的旧值或默认值）。
+func ApplyManifest(s *Settings, localAppData string) (source, note string) {
+	m, err := manifest.Load(localAppData)
+	switch {
+	case m.PortsValid():
+		s.PortCLI, s.PortBrowser, s.PortDesktop = m.Ports.CLI, m.Ports.Browser, m.Ports.Desktop
+		return PortFromManifest, ""
+	case err != nil:
+		note = "部署清单读不了（" + err.Error() + "），端口暂按设置文件或默认值；跑一次一键总检会重新生成"
+	case m != nil:
+		note = "部署清单里的端口无效，端口暂按设置文件或默认值；跑一次一键总检会从 Clash 重新读"
+	}
+	d := Defaults()
+	if s.PortCLI == d.PortCLI && s.PortBrowser == d.PortBrowser && s.PortDesktop == d.PortDesktop {
+		return PortFromDefault, note
+	}
+	return PortFromSettings, note
 }
 
 // Save 原子写入设置。

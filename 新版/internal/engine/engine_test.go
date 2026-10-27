@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"ClaudeEnvGuard/internal/appconfig"
 	"ClaudeEnvGuard/internal/facts"
 	"ClaudeEnvGuard/internal/fixes"
 	"ClaudeEnvGuard/internal/model"
@@ -125,5 +128,33 @@ func TestCheckCancelled(t *testing.T) {
 	}
 	if len(rep.Notes) == 0 || !strings.Contains(strings.Join(rep.Notes, ""), "取消") {
 		t.Errorf("应提示检查被取消：%v", rep.Notes)
+	}
+}
+
+// 端口以部署清单为准、设置页只读：保存设置不会把清单里的端口写进设置文件，也改不了端口。
+func TestSettingsPortsFromManifestAreReadOnly(t *testing.T) {
+	fk := platform.NewFake(t.TempDir())
+	e := New(fk, "test", "")
+	p := filepath.Join(fk.P.LocalAppData, "ClaudeNetworkGuard", "部署清单.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`{"格式版本":1,"端口":{"通用":7897,"浏览器":7900,"Desktop":7901}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, note, src := e.SettingsWithPortSource()
+	if src != appconfig.PortFromManifest || note != "" || s.PortCLI != 7897 || s.PortBrowser != 7900 || s.PortDesktop != 7901 {
+		t.Fatalf("应按清单取端口：%q %q %+v", src, note, s)
+	}
+	s.PortDesktop, s.SelectedBrowser = 12345, "KK"
+	if err := e.SaveSettings(s); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := appconfig.Load(fk.P.LocalAppData)
+	if saved.PortCLI != appconfig.DefaultPortCLI || saved.PortDesktop != appconfig.DefaultPortDesktop || saved.SelectedBrowser != "KK" {
+		t.Errorf("设置文件应保留原端口、只存其他设置：%+v", saved)
+	}
+	if got, _ := e.Settings(); got.PortDesktop != 7901 {
+		t.Errorf("保存后端口仍按清单：%+v", got)
 	}
 }

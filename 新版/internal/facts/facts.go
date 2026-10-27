@@ -6,6 +6,8 @@
 package facts
 
 import (
+	"path/filepath"
+	"strings"
 	"time"
 
 	"ClaudeEnvGuard/internal/appconfig"
@@ -38,6 +40,9 @@ type Facts struct {
 	Exits       map[model.Entry]*model.Exit
 	SystemDNS   *model.DNSLeak
 	IPv6        IPv6Facts
+
+	// ManifestFound 表示读到了部署清单（%LOCALAPPDATA%\ClaudeNetworkGuard\部署清单.json）。
+	ManifestFound bool
 
 	Errors  map[string]string          // 收集器名 → 异常
 	Timings map[string]CollectorTiming // 收集器名 → 本地阶段耗时
@@ -81,6 +86,18 @@ type Browser struct {
 	Running     []platform.Process // 使用此目录的浏览器主进程
 	PrefLang    string             // Default\Preferences 里的 intl.accept_languages
 	DuplicateOf []string           // 和哪些其他名称共用同一目录
+	Registered  bool               // 部署清单里登记过
+	// MissingShortcut 是部署清单登记、但现在已经不在的快捷方式路径（被删或改名）。
+	MissingShortcut string
+}
+
+func (b *Browser) hasShortcut(path string) bool {
+	for _, sc := range b.Shortcuts {
+		if strings.EqualFold(filepath.Clean(sc.Path), filepath.Clean(path)) {
+			return true
+		}
+	}
+	return false
 }
 
 // CLIFacts 是 Claude Code 的现场。

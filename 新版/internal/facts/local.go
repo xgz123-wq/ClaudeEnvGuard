@@ -22,9 +22,11 @@ import (
 	"ClaudeEnvGuard/internal/chrome"
 	"ClaudeEnvGuard/internal/jsonx"
 	"ClaudeEnvGuard/internal/logx"
+	"ClaudeEnvGuard/internal/manifest"
 	"ClaudeEnvGuard/internal/model"
 	"ClaudeEnvGuard/internal/netprobe"
 	"ClaudeEnvGuard/internal/platform"
+	"ClaudeEnvGuard/internal/scriptroot"
 )
 
 // DesktopFamily 是 Claude Desktop 的 MSIX 包族名。
@@ -68,6 +70,12 @@ func CollectLocal(ctx context.Context, sys platform.OS, s appconfig.Settings) *F
 	if perr != nil {
 		f.Errors["processes"] = perr.Error()
 	}
+	// 部署清单只读：读坏了按没有清单处理，只记日志
+	m, merr := manifest.Load(f.Paths.LocalAppData)
+	if merr != nil {
+		logx.Printf("部署清单读不了，按没有清单处理：%v", merr)
+	}
+	f.ManifestFound = m != nil
 	for _, p := range procs {
 		low := strings.ToLower(p.Exe)
 		if strings.EqualFold(p.Name, "claude.exe") && !strings.Contains(low, `\windowsapps\claude_`) {
@@ -89,7 +97,7 @@ func CollectLocal(ctx context.Context, sys platform.OS, s appconfig.Settings) *F
 			return func() { f.Proxy = v }
 		}),
 		run("browsers", 2500*time.Millisecond, func() func() {
-			list, sel := collectBrowsers(sys, s, procs)
+			list, sel := collectBrowsers(sys, s, procs, m)
 			st := time.Now()
 			exe := findChrome(sys)
 			if d := time.Since(st); d > slowStep {
@@ -347,7 +355,7 @@ func DefaultChromeUserData(p platform.Paths) string {
 	return filepath.Join(p.LocalAppData, "Google", "Chrome", "User Data")
 }
 
-func collectBrowsers(sys platform.OS, s appconfig.Settings, procs []platform.Process) ([]Browser, *Browser) {
+func collectBrowsers(sys platform.OS, s appconfig.Settings, procs []platform.Process, m *manifest.Manifest) ([]Browser, *Browser) {
 	paths := sys.Paths()
 	byDir := map[string]*Browser{}
 	var order []string
@@ -398,6 +406,31 @@ func collectBrowsers(sys platform.OS, s appconfig.Settings, procs []platform.Pro
 		}
 		b := add(&Browser{Name: name, UserDataDir: ud, Standard: strings.HasPrefix(chrome.NormDir(ud), chrome.NormDir(root)+`\`), DirExists: exists(ud)})
 		b.Shortcuts = append(b.Shortcuts, ShortcutInfo{Shortcut: sc, Flags: flags})
+	}
+	// 部署清单登记过的：标记已登记；登记的快捷方式不在桌面时按清单里的路径读，文件没了记下来给 B1 报。
+	if m != nil {
+		for _, mb := range m.Browsers {
+			if mb.UserDataDir == "" {
+				continue
+			}
+			ud := expandPercent(mb.UserDataDir, paths)
+			name := mb.Alias
+			if name == "" {
+				name = filepath.Base(filepath.Dir(ud))
+			}
+			b := add(&Browser{Name: name, UserDataDir: ud, Standard: strings.HasPrefix(chrome.NormDir(ud), chrome.NormDir(root)+`\`), DirExists: exists(ud)})
+			b.Registered = true
+			if mb.Shortcut == "" || b.hasShortcut(mb.Shortcut) {
+				continue
+			}
+			if !exists(mb.Shortcut) {
+				b.MissingShortcut = mb.Shortcut
+				continue
+			}
+			if sc, err := sys.ReadShortcut(mb.Shortcut); err == nil {
+				b.Shortcuts = append(b.Shortcuts, ShortcutInfo{Shortcut: sc, Flags: chrome.Parse(sc.Args)})
+			}
+		}
 	}
 	lnkTime := time.Since(st)
 	// 运行中的主进程
@@ -740,50 +773,12 @@ func collectSystem(sys platform.OS) SystemFacts {
 
 // ---------------------------------------------------------------- 分享包直连防护
 
-// ShareDocDir 返回分享包里 Claude环境 文档目录。
-func ShareDocDir(root string) string {
-	return filepath.Join(root, "docs", "配置", "Claude环境")
-}
-
-// FindShareRoot 找分享包根目录：设置里指定的优先，其次在桌面一级子目录里找；有防护状态文件的优先。
-func FindShareRoot(sys platform.OS, s appconfig.Settings) string {
-	var cands []string
-	if s.SharePackageRoot != "" {
-		cands = append(cands, s.SharePackageRoot)
-	}
-	for _, base := range []string{sys.Paths().Desktop, filepath.Join(sys.Paths().Home, "Documents")} {
-		entries, err := os.ReadDir(base)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if e.IsDir() {
-				cands = append(cands, filepath.Join(base, e.Name()))
-			}
-		}
-	}
-	first := ""
-	for _, c := range cands {
-		doc := ShareDocDir(c)
-		if !exists(filepath.Join(doc, "README.md")) {
-			continue
-		}
-		if exists(filepath.Join(doc, "Desktop防护", "应用直连防护状态.json")) {
-			return c
-		}
-		if first == "" {
-			first = c
-		}
-	}
-	return first
-}
-
 func collectGuard(sys platform.OS, s appconfig.Settings) GuardFacts {
-	g := GuardFacts{ShareRoot: FindShareRoot(sys, s)}
+	g := GuardFacts{ShareRoot: scriptroot.Root(sys.Paths(), s.SharePackageRoot)}
 	if g.ShareRoot == "" {
 		return g
 	}
-	dir := filepath.Join(ShareDocDir(g.ShareRoot), "Desktop防护")
+	dir := filepath.Join(scriptroot.DocDir(g.ShareRoot), "Desktop防护")
 	sb, err := os.ReadFile(filepath.Join(dir, "应用直连防护状态.json"))
 	if err != nil {
 		return g

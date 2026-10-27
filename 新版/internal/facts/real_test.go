@@ -28,7 +28,7 @@ func TestRealLocalTiming(t *testing.T) {
 	tm("processes", func() { procs, _ = sys.Processes("chrome.exe", "claude.exe") })
 	tm("proxy", func() { collectProxy(sys, s, procs) })
 	tm("browsers", func() {
-		list, sel := collectBrowsers(sys, s, procs)
+		list, sel := collectBrowsers(sys, s, procs, nil)
 		for _, b := range list {
 			t.Logf("  浏览器 %s 快捷方式 %d 运行 %d", b.Name, len(b.Shortcuts), len(b.Running))
 		}

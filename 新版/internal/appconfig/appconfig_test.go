@@ -34,3 +34,30 @@ func TestLoadSaveAndFallbacks(t *testing.T) {
 		t.Errorf("非法端口应恢复默认端口但保留其他设置：%+v %q", got, note)
 	}
 }
+
+func TestApplyManifest(t *testing.T) {
+	dir := t.TempDir()
+	s := Defaults()
+	if src, note := ApplyManifest(&s, dir); src != PortFromDefault || note != "" || s != Defaults() {
+		t.Errorf("没有清单时端口不变、来源为默认值：%q %q %+v", src, note, s)
+	}
+	s.PortDesktop = 50000
+	if src, _ := ApplyManifest(&s, dir); src != PortFromSettings || s.PortDesktop != 50000 {
+		t.Errorf("没有清单、设置文件里有旧端口时沿用它：%q %+v", src, s)
+	}
+	p := filepath.Join(dir, "ClaudeNetworkGuard", "部署清单.json")
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	_ = os.WriteFile(p, []byte(`{"格式版本":1,"端口":{"通用":7897,"浏览器":7900,"Desktop":7901}}`), 0o644)
+	if src, note := ApplyManifest(&s, dir); src != PortFromManifest || note != "" || s.PortCLI != 7897 || s.PortBrowser != 7900 || s.PortDesktop != 7901 {
+		t.Errorf("有清单时三个端口都按清单：%q %q %+v", src, note, s)
+	}
+	s = Defaults()
+	_ = os.WriteFile(p, []byte(`{"端口":{"通用":7897,"浏览器":7897,"Desktop":7901}}`), 0o644)
+	if src, note := ApplyManifest(&s, dir); src != PortFromDefault || note == "" || s != Defaults() {
+		t.Errorf("清单端口重复时不用、并提示：%q %q %+v", src, note, s)
+	}
+	_ = os.WriteFile(p, []byte(`{坏了`), 0o644)
+	if src, note := ApplyManifest(&s, dir); src != PortFromDefault || note == "" || s != Defaults() {
+		t.Errorf("清单读坏时不用、并提示：%q %q %+v", src, note, s)
+	}
+}
