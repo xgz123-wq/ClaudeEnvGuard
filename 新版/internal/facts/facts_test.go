@@ -235,6 +235,38 @@ func TestCollectNetworkBudgetAndPorts(t *testing.T) {
 	}
 }
 
+func TestCollectNetworkProbeRetry(t *testing.T) {
+	f := &Facts{Settings: appconfig.Defaults(), Exits: map[model.Entry]*model.Exit{}, Errors: map[string]string{},
+		Proxy: ProxyFacts{Owners: map[int]PortOwner{43865: {Listening: true}}}}
+	var mu sync.Mutex
+	calls := 0
+	n := Net{
+		Client: func(string, time.Duration) *http.Client { return &http.Client{} },
+		Trace: func(ctx context.Context, c *http.Client) (netprobe.Trace, error) {
+			return netprobe.Trace{IP: "1.2.3.4", Loc: "US"}, nil
+		},
+		Probe: func(ctx context.Context, c *http.Client, u string) (string, string) {
+			mu.Lock()
+			defer mu.Unlock()
+			calls++
+			if calls == 1 {
+				return netprobe.ReachFail, "api.anthropic.com：超时"
+			}
+			return netprobe.ReachOK, "api.anthropic.com：HTTP 401，可达"
+		},
+		Lookup: func(ctx context.Context, c *http.Client, ip string) (netprobe.IPInfo, error) {
+			return netprobe.IPInfo{CountryCode: "US"}, nil
+		},
+		DNS:  func(ctx context.Context, via, api *http.Client) ([]netprobe.Resolver, error) { return nil, nil },
+		IPv6: func(ctx context.Context) (string, error) { return "", errors.New("无") },
+	}
+	CollectNetwork(context.Background(), platform.NewFake(t.TempDir()), f, n, 10*time.Second)
+	cli := f.Exits[model.EntryCLI]
+	if calls != 2 || cli.Reach != netprobe.ReachOK || !strings.Contains(cli.ReachDetail, "重试成功") {
+		t.Errorf("第一次失败应重试一次并记为可达：calls=%d %+v", calls, cli)
+	}
+}
+
 func TestHashGuardTargetsSignature(t *testing.T) {
 	dir := t.TempDir()
 	sys := platform.NewFake(dir)

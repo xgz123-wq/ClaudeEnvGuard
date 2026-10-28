@@ -222,19 +222,21 @@ func ClassifyProbe(host string, status int, header http.Header, body, finalURL s
 	return ReachOK
 }
 
-// Probe 访问 URL 并分类，返回状态和一句说明。
+// Probe 访问 URL 并分类，返回状态和一句说明（带用时，线路慢时一眼看出来）。
 func Probe(ctx context.Context, c *http.Client, rawURL string) (string, string) {
 	u, _ := url.Parse(rawURL)
 	host := ""
 	if u != nil {
 		host = u.Hostname()
 	}
+	start := time.Now()
 	code, h, body, final, err := get(ctx, c, rawURL, "", 64*1024)
+	secs := time.Since(start).Seconds()
 	if err != nil {
-		return ReachFail, host + "：" + FriendlyErr(err)
+		return ReachFail, fmt.Sprintf("%s：%s（%.1f 秒）", host, FriendlyErr(err), secs)
 	}
 	st := ClassifyProbe(host, code, h, string(body), final)
-	return st, fmt.Sprintf("%s：HTTP %d，%s", host, code, ReachLabel(st))
+	return st, fmt.Sprintf("%s：HTTP %d，%s，用时 %.1f 秒", host, code, ReachLabel(st), secs)
 }
 
 // ---------------------------------------------------------------- 出口地理与信誉

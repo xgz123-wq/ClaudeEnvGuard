@@ -25,6 +25,8 @@ const cleanNames: Record<string, string> = { code: 'Claude Code', desktop: 'Clau
 const st = {
   report: null as Report | null,
   checking: false,
+  checkStart: 0,
+  lastSecs: 0, // 上一次联网检查的用时，检查中拿来给个参照
   offline: false,
   phase: 'ready' as Phase,
   card: 'todo' as Card,
@@ -106,11 +108,14 @@ export async function runCheck(offline = false) {
   if (st.checking) return;
   st.checking = true;
   st.offline = offline;
+  if (st.report?.final && !st.report.offline) st.lastSecs = st.report.durationMs / 1000;
+  st.checkStart = Date.now();
   st.report = null;
   st.phase = 'ready';
   st.plan = null;
   st.clean = null;
   render();
+  const tick = window.setInterval(() => { if (st.checking) renderHero(); }, 1000);
   try {
     const rep = await api.check(offline, ctx.init?.settings.selectedBrowser ?? '');
     st.report = rep;
@@ -119,6 +124,7 @@ export async function runCheck(offline = false) {
   } catch (e) {
     toast('检查失败：' + errText(e), 'err');
   } finally {
+    window.clearInterval(tick);
     st.checking = false;
     render();
     if (st.firstCheck) {
@@ -186,13 +192,20 @@ function render() {
 interface Hero { tone: 'pass' | 'warn' | 'fail' | 'info'; icon: string; spin: boolean; title: string; line: string;
   btn: string; act: string; disabled: boolean; second?: string; secondAct?: string; hint: string }
 
+/** 检查中的提示：已用秒数 + 上次用时；线路慢时联网项要多等，不再写死「约 4 秒」。 */
+function checkingHint(): string {
+  const used = Math.round((Date.now() - st.checkStart) / 1000);
+  const last = st.lastSecs ? `上次 ${st.lastSecs.toFixed(1)} 秒` : '线路快时约 4 秒，慢时 10 秒以上';
+  return `已用 ${used} 秒 · ${last}`;
+}
+
 function heroState(): Hero {
   const rep = st.report;
   if (st.checking) {
     const local = !!rep;
     return { tone: 'info', icon: '✻', spin: true, title: st.offline ? '正在离线检查…' : '正在检查…',
       line: (local ? '本机配置 ✓' : '读本机配置…') + (st.offline ? '' : ' · ' + (local ? '测三条线路…' : '等待联网')),
-      btn: '检查中…', act: '', disabled: true, hint: st.offline ? '' : '约 4 秒' };
+      btn: '检查中…', act: '', disabled: true, hint: st.offline ? '' : checkingHint() };
   }
   if (st.phase === 'plan') {
     const on = onActions();

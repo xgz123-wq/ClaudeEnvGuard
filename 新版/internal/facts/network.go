@@ -75,7 +75,8 @@ func CollectNetwork(ctx context.Context, sys platform.OS, f *Facts, n Net, budge
 			fn()
 		}
 	}
-	const reqTimeout = 6 * time.Second
+	// 经代理新建一条 HTTPS 连接实测 2–7 秒（链路慢时），6 秒会把「慢」误判成「不可达」
+	const reqTimeout = 8 * time.Second
 
 	specs := f.Entries()
 	listening := map[model.Entry]bool{}
@@ -137,6 +138,15 @@ func CollectNetwork(ctx context.Context, sys platform.OS, f *Facts, n Net, budge
 		})
 		goRun(func() {
 			st, detail := n.Probe(ctx, c, sp.ProbeURL)
+			// 慢线路偶尔一次握手超时或被断开；时间还够就再试一次，免得误报不可达
+			if dl, ok := ctx.Deadline(); st == netprobe.ReachFail && ctx.Err() == nil && (!ok || time.Until(dl) > 3*time.Second) {
+				first := detail
+				if st2, d2 := n.Probe(ctx, c, sp.ProbeURL); st2 != netprobe.ReachFail {
+					st, detail = st2, d2+"（第一次失败："+first+"，重试成功）"
+				} else {
+					detail = d2 + "（已重试 1 次）"
+				}
+			}
 			apply(func() { f.Exits[sp.Entry].Reach, f.Exits[sp.Entry].ReachDetail = st, detail })
 		})
 		if sp.DNS {

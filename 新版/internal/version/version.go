@@ -2,4 +2,4 @@
 package version
 
 // Version 是对外显示的版本号。
-const Version = "2.6.1"
+const Version = "2.6.2"

@@ -203,7 +203,7 @@ func logCheck(rep model.Report, f *facts.Facts) {
 		logx.Printf("本地收集用时：%s", line)
 	}
 	for _, ex := range rep.Exits {
-		logx.Printf("出口 %s:%d 监听=%v IP=%s 国家=%s 可达=%s %s", ex.Entry, ex.Port, ex.Listening, ex.IP, ex.CountryCode, ex.Reach, ex.Err)
+		logx.Printf("出口 %s:%d 监听=%v IP=%s 国家=%s 可达=%s（%s） %s", ex.Entry, ex.Port, ex.Listening, ex.IP, ex.CountryCode, ex.Reach, ex.ReachDetail, ex.Err)
 	}
 	for _, r := range rep.Results {
 		if r.Status == model.Fail || r.Status == model.Warn || r.Status == model.Unknown {

@@ -2,12 +2,14 @@ package facts
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"ClaudeEnvGuard/internal/appconfig"
+	"ClaudeEnvGuard/internal/netprobe"
 	"ClaudeEnvGuard/internal/platform"
 )
 
@@ -100,4 +102,44 @@ func TestRealFileSignature(t *testing.T) {
 	if sig.Valid {
 		t.Errorf("测试程序不该有有效签名")
 	}
+}
+
+// TestRealNetworkTiming 在真机上测联网阶段每一步的起止时间，找慢在哪一步。只走三个专用端口和系统路由，不改任何东西。
+// 运行：CEG_REAL=1 go test ./internal/facts -run TestRealNetworkTiming -v
+func TestRealNetworkTiming(t *testing.T) {
+	if os.Getenv("CEG_REAL") == "" {
+		t.Skip("设置 CEG_REAL=1 才在真机上运行")
+	}
+	sys := platform.NewWindows()
+	f := CollectLocal(context.Background(), sys, appconfig.Defaults())
+	start := time.Now()
+	n := DefaultNet()
+	at := func() string { return time.Since(start).Truncate(10 * time.Millisecond).String() }
+	trace, probe, lookup, dns := n.Trace, n.Probe, n.Lookup, n.DNS
+	n.Trace = func(ctx context.Context, c *http.Client) (netprobe.Trace, error) {
+		s := at()
+		r, err := trace(ctx, c)
+		t.Logf("trace   %s → %s err=%v", s, at(), err)
+		return r, err
+	}
+	n.Probe = func(ctx context.Context, c *http.Client, u string) (string, string) {
+		s := at()
+		st, d := probe(ctx, c, u)
+		t.Logf("probe   %s → %s %s %s", s, at(), st, d)
+		return st, d
+	}
+	n.Lookup = func(ctx context.Context, c *http.Client, ip string) (netprobe.IPInfo, error) {
+		s := at()
+		r, err := lookup(ctx, c, ip)
+		t.Logf("lookup  %s → %s src=%s err=%v", s, at(), r.Source, err)
+		return r, err
+	}
+	n.DNS = func(ctx context.Context, via, api *http.Client) ([]netprobe.Resolver, error) {
+		s := at()
+		r, err := dns(ctx, via, api)
+		t.Logf("dns     %s → %s n=%d err=%v", s, at(), len(r), err)
+		return r, err
+	}
+	CollectNetwork(context.Background(), sys, f, n, 14*time.Second)
+	t.Logf("总计 %s", at())
 }
