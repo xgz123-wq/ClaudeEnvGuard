@@ -18,6 +18,15 @@ func ptrU(n uint32) *uint32 { return &n }
 
 const goodArgs = `--user-data-dir="C:\U\L\ClaudeAccountBrowsers\KK\UserData" --proxy-server="socks5://127.0.0.1:43866" --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost" --lang=en-US --accept-lang="en-US,en" --force-webrtc-ip-handling-policy=disable_non_proxied_udp https://ip.net.coffee/claude/`
 
+// firewallAllGood 是每个网段的规则都生效的现场。
+func firewallAllGood() facts.FirewallFacts {
+	rules := map[string]facts.FirewallRule{}
+	for _, g := range facts.FirewallRanges {
+		rules[g.RuleID] = facts.FirewallRule{Exists: true, Name: g.RuleID, Active: true, Block: true, Out: true, Range: true}
+	}
+	return facts.FirewallFacts{Read: true, Rules: rules}
+}
+
 // goodFacts 构造一台按分享包配好的机器（出口美国东部）。
 func goodFacts(t *testing.T) *facts.Facts {
 	t.Helper()
@@ -49,7 +58,7 @@ func goodFacts(t *testing.T) *facts.Facts {
 		Desktop: facts.DesktopFacts{Installed: true, FullName: "Claude_2.31226.1.0_x64__pzs8sxrjxfjjc", Version: "2.31226.1.0",
 			HKLM: facts.PolicyLayer{Name: "HKLM", HasEgress: true, Egress: "http://127.0.0.1:43867", DisableAU: ptrU(1)}},
 		System:    facts.SystemFacts{WindowsTZ: "Eastern Standard Time", AutoTZ: ptrB(false), Locale: "en-US", GeoName: "US", UILang: "en-US"},
-		Firewall:  facts.FirewallFacts{Read: true, Exists: true, Name: "x", Active: true, Block: true, Out: true, Range: true},
+		Firewall:  firewallAllGood(),
 		IPv6:      facts.IPv6Facts{Tested: true, DirectErr: "超时"},
 		SystemDNS: &model.DNSLeak{Tested: true, Resolvers: []model.Resolver{{IP: "1.1.1.1", CountryCode: "US"}}},
 		Exits: map[model.Entry]*model.Exit{
@@ -133,9 +142,93 @@ func TestFreshMachine(t *testing.T) {
 	if m["S7"].Status != model.Warn || m["S7"].FixID != FixFirewall || !m["S7"].Advanced {
 		t.Errorf("S7 应为可选警告：%+v", m["S7"])
 	}
+	for _, g := range facts.FirewallRanges {
+		if !strings.Contains(m["S7"].Current, g.CIDR) || !strings.Contains(m["S7"].Detail, g.CIDR) {
+			t.Errorf("S7 应写明没装的网段 %s：%+v", g.CIDR, m["S7"])
+		}
+	}
 	s := Summarize(rs)
 	if s.Overall != model.Fail || !strings.Contains(s.NextStep, "代理客户端") {
 		t.Errorf("下一步应先处理代理客户端：%+v", s)
+	}
+}
+
+// S7：两条都生效才通过；缺一条或内容不对就警告，并且只点名有问题的网段。
+func TestS7TwoRanges(t *testing.T) {
+	first, second := facts.FirewallRanges[0], facts.FirewallRanges[1]
+	s7 := func(fw facts.FirewallFacts) model.Result {
+		f := goodFacts(t)
+		f.Firewall = fw
+		return byID(Evaluate(f, ResolveTarget(f)))["S7"]
+	}
+	// change 把现场改成这个用例的样子
+	warn := func(name string, change func(fw *facts.FirewallFacts), bad, good []facts.FirewallRange) {
+		t.Helper()
+		fw := firewallAllGood()
+		change(&fw)
+		r := s7(fw)
+		if r.Status != model.Warn || r.FixID != FixFirewall || !r.Advanced || r.Advice == "" {
+			t.Errorf("%s：应为可一键修复的可选警告：%+v", name, r)
+		}
+		for _, g := range bad {
+			if !strings.Contains(r.Current, g.CIDR) || !strings.Contains(r.Detail, g.CIDR) {
+				t.Errorf("%s：应写明 %s：%+v", name, g.CIDR, r)
+			}
+		}
+		for _, g := range good {
+			if strings.Contains(r.Current, g.CIDR) || strings.Contains(r.Detail, g.CIDR) {
+				t.Errorf("%s：不该点名没问题的 %s：%+v", name, g.CIDR, r)
+			}
+		}
+	}
+
+	r := s7(firewallAllGood())
+	if r.Status != model.Pass || r.FixID != "" {
+		t.Errorf("两条都在应通过：%+v", r)
+	}
+	for _, g := range facts.FirewallRanges {
+		if !strings.Contains(r.Target, g.CIDR) {
+			t.Errorf("目标应写明 %s：%+v", g.CIDR, r)
+		}
+	}
+
+	warn("缺第二条", func(fw *facts.FirewallFacts) { delete(fw.Rules, second.RuleID) },
+		[]facts.FirewallRange{second}, []facts.FirewallRange{first})
+	warn("缺第一条", func(fw *facts.FirewallFacts) { delete(fw.Rules, first.RuleID) },
+		[]facts.FirewallRange{first}, []facts.FirewallRange{second})
+	for name, spoil := range map[string]func(st *facts.FirewallRule){
+		"第二条被关掉":  func(st *facts.FirewallRule) { st.Active = false },
+		"第二条不是阻断": func(st *facts.FirewallRule) { st.Block = false },
+		"第二条方向不对": func(st *facts.FirewallRule) { st.Out = false },
+		"第二条网段不对": func(st *facts.FirewallRule) { st.Range = false },
+	} {
+		warn(name, func(fw *facts.FirewallFacts) {
+			st := fw.Rules[second.RuleID]
+			spoil(&st)
+			fw.Rules[second.RuleID] = st
+		}, []facts.FirewallRange{second}, []facts.FirewallRange{first})
+	}
+	warn("一条缺、一条不对", func(fw *facts.FirewallFacts) {
+		delete(fw.Rules, first.RuleID)
+		st := fw.Rules[second.RuleID]
+		st.Active = false
+		fw.Rules[second.RuleID] = st
+	}, []facts.FirewallRange{first, second}, nil)
+
+	// 名字不同但内容等价的规则，两个网段都算生效
+	fw := firewallAllGood()
+	for _, g := range facts.FirewallRanges {
+		st := fw.Rules[g.RuleID]
+		st.Name = "{guid-" + g.CIDR + "}"
+		fw.Rules[g.RuleID] = st
+	}
+	if r := s7(fw); r.Status != model.Pass || !strings.Contains(r.Detail, "{guid-"+second.CIDR+"}") {
+		t.Errorf("等价规则应通过并写明规则名：%+v", r)
+	}
+
+	// 读不到就是未知，不给修
+	if r := s7(facts.FirewallFacts{Err: "拒绝访问"}); r.Status != model.Unknown || r.FixID != "" || !strings.Contains(r.Detail, "拒绝访问") {
+		t.Errorf("读不到规则应为未知：%+v", r)
 	}
 }
 

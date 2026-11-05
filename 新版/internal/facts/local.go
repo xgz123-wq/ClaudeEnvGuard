@@ -45,7 +45,6 @@ const (
 	KeyInetSettings = `Software\Microsoft\Windows\CurrentVersion\Internet Settings`
 	KeyTcpip6       = `SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters`
 	KeyFirewall     = `SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules`
-	FirewallRuleID  = `Claude-Anthropic-Direct-Block-160.79.104.0-23`
 )
 
 // ProxyEnvKeys 是需要关注的代理变量。
@@ -884,7 +883,36 @@ func (c *ctxReader) Read(p []byte) (int, error) {
 
 // ---------------------------------------------------------------- 防火墙阻断规则
 
-func parseFirewallRule(v string) (active, block, out, rng bool) {
+// FirewallRange 是一个要拦住直连的网段和它的防火墙规则，每个网段一条规则。
+type FirewallRange struct {
+	RuleID string // 规则名
+	CIDR   string // 建规则时的写法
+	Mask   string // 注册表里存的写法
+}
+
+// FirewallRanges 是要拦住直连的全部网段，和分享包 Anthropic网段直连阻断.ps1 的 $ranges 一致。
+var FirewallRanges = []FirewallRange{
+	{RuleID: `Claude-Anthropic-Direct-Block-160.79.104.0-23`, CIDR: "160.79.104.0/23", Mask: "160.79.104.0/255.255.254.0"},
+	{RuleID: `Claude-Anthropic-Direct-Block-153.61.224.0-22`, CIDR: "153.61.224.0/22", Mask: "153.61.224.0/255.255.252.0"},
+}
+
+// FirewallRangeByRule 按规则名找网段。修复和还原都靠它卡名字：不在表里的一律找不到。
+func FirewallRangeByRule(name string) (FirewallRange, bool) {
+	for _, g := range FirewallRanges {
+		if g.RuleID == name {
+			return g, true
+		}
+	}
+	return FirewallRange{}, false
+}
+
+// Blocks 判断注册表里这条规则的内容是不是真的在拦这个网段。
+func (g FirewallRange) Blocks(rule string) bool {
+	a, b, o, r := parseFirewallRule(rule, g)
+	return a && b && o && r
+}
+
+func parseFirewallRule(v string, g FirewallRange) (active, block, out, rng bool) {
 	for _, part := range strings.Split(v, "|") {
 		k, val, _ := strings.Cut(part, "=")
 		switch strings.ToLower(k) {
@@ -895,7 +923,7 @@ func parseFirewallRule(v string) (active, block, out, rng bool) {
 		case "dir":
 			out = strings.EqualFold(val, "Out")
 		case "ra4":
-			if val == "160.79.104.0/255.255.254.0" || val == "160.79.104.0/23" {
+			if val == g.Mask || val == g.CIDR {
 				rng = true
 			}
 		}
@@ -904,32 +932,45 @@ func parseFirewallRule(v string) (active, block, out, rng bool) {
 }
 
 func collectFirewall(sys platform.OS) FirewallFacts {
-	fw := FirewallFacts{}
-	v, err := sys.RegRead(platform.HKLM, KeyFirewall, FirewallRuleID)
-	if err != nil {
-		fw.Err = err.Error()
-		return fw
+	fw := FirewallFacts{Rules: map[string]FirewallRule{}}
+	var noSameName []FirewallRange
+	for _, g := range FirewallRanges {
+		v, err := sys.RegRead(platform.HKLM, KeyFirewall, g.RuleID)
+		if err != nil {
+			fw.Err = err.Error()
+			return fw
+		}
+		if !v.Exists {
+			noSameName = append(noSameName, g)
+			continue
+		}
+		st := FirewallRule{Exists: true, Name: g.RuleID}
+		st.Active, st.Block, st.Out, st.Range = parseFirewallRule(v.Str, g)
+		fw.Rules[g.RuleID] = st
 	}
-	fw.Read = true
-	if !v.Exists {
-		// 名字不同但内容等价的规则也算
-		names, _ := sys.RegValueNames(platform.HKLM, KeyFirewall)
+	if len(noSameName) > 0 {
+		// 名字不同但内容等价的规则也算。本机规则常有上千条，缺几条都只扫一遍。
+		names, err := sys.RegValueNames(platform.HKLM, KeyFirewall)
+		if err != nil {
+			fw.Err = err.Error()
+			return fw
+		}
 		for _, n := range names {
 			rv, err := sys.RegRead(platform.HKLM, KeyFirewall, n)
-			if err != nil || !strings.Contains(rv.Str, "160.79.104.0") {
+			if err != nil {
 				continue
 			}
-			if a, b, o, r := parseFirewallRule(rv.Str); b && o && r {
-				fw.Exists, fw.Name, fw.Active, fw.Block, fw.Out, fw.Range = true, n, a, b, o, r
-				if a {
-					return fw
+			for _, g := range noSameName {
+				if fw.Rules[g.RuleID].Active || (!strings.Contains(rv.Str, g.Mask) && !strings.Contains(rv.Str, g.CIDR)) {
+					continue
+				}
+				if a, b, o, r := parseFirewallRule(rv.Str, g); b && o && r {
+					fw.Rules[g.RuleID] = FirewallRule{Exists: true, Name: n, Active: a, Block: b, Out: o, Range: r}
 				}
 			}
 		}
-		return fw
 	}
-	fw.Exists, fw.Name = true, FirewallRuleID
-	fw.Active, fw.Block, fw.Out, fw.Range = parseFirewallRule(v.Str)
+	fw.Read = true
 	return fw
 }
 

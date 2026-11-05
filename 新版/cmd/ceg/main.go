@@ -205,20 +205,10 @@ func cmdFix(eng *engine.Engine, args []string, stdout, stderr io.Writer, st repo
 			}
 		}
 	} else {
-		known := map[string]bool{}
-		for _, a := range p.Actions {
-			known[a.ID] = true
-		}
-		for _, id := range strings.Split(*items, ",") {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			if !known[id] {
-				fmt.Fprintf(stderr, "计划里没有 %s（可能已经不需要修复），跳过。\n", id)
-				continue
-			}
-			ids = append(ids, id)
+		var unknown []string
+		ids, unknown = fixes.MatchItems(p, strings.Split(*items, ","))
+		for _, id := range unknown {
+			fmt.Fprintf(stderr, "计划里没有 %s（可能已经不需要修复），跳过。\n", id)
 		}
 	}
 	if len(ids) == 0 {

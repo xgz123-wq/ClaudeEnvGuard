@@ -189,16 +189,35 @@ type GuardTarget struct {
 	Signer              string // 签名证书主题，只在核对过签名时有值
 }
 
-// FirewallFacts 是 Anthropic 网段直连阻断规则。
-type FirewallFacts struct {
-	Read   bool
+// FirewallRule 是一个网段的直连阻断规则现状。
+type FirewallRule struct {
 	Exists bool
-	Name   string
+	Name   string // 实际找到的规则名：可能是名字不同但内容等价的规则
 	Active bool
 	Block  bool
 	Out    bool
 	Range  bool
-	Err    string
+}
+
+// OK 表示这条规则真的在拦这个网段。
+func (r FirewallRule) OK() bool { return r.Exists && r.Active && r.Block && r.Out && r.Range }
+
+// FirewallFacts 是 Anthropic 网段直连阻断规则，每个网段一条。
+type FirewallFacts struct {
+	Read  bool
+	Rules map[string]FirewallRule // 键是 FirewallRange.RuleID；没有这个键等于这条规则不存在
+	Err   string
+}
+
+// Broken 按 FirewallRanges 的顺序返回没生效的网段。
+func (fw FirewallFacts) Broken() []FirewallRange {
+	var out []FirewallRange
+	for _, g := range FirewallRanges {
+		if !fw.Rules[g.RuleID].OK() {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // IPv6Facts 是 IPv6 泄露相关事实。

@@ -283,15 +283,26 @@ func (x *Executor) Apply(actionID string, st model.Step) Record {
 			return fail(err)
 		}
 	case "firewall_add":
-		if p["name"] != facts.FirewallRuleID {
+		// 名字来自请求文件，同用户的程序能改：只认白名单，写进命令的也只用白名单里的值
+		g, ok := facts.FirewallRangeByRule(p["name"])
+		if !ok {
 			return fail(errors.New("规则名不合法"))
 		}
-		old, _ := x.Sys.RegRead(platform.HKLM, facts.KeyFirewall, facts.FirewallRuleID)
+		old, err := x.Sys.RegRead(platform.HKLM, facts.KeyFirewall, g.RuleID)
+		if err != nil {
+			return fail(err)
+		}
 		r.Before["existed"] = strconv.FormatBool(old.Exists)
-		script := "Remove-NetFirewallRule -Name '" + facts.FirewallRuleID + "' -ErrorAction SilentlyContinue; " +
-			"New-NetFirewallRule -Name '" + facts.FirewallRuleID + "' -DisplayName 'Claude/Anthropic 直连阻断 160.79.104.0/23' " +
-			"-Description 'Block direct outbound connections to Anthropic API IPv4 range; local proxy remains available.' " +
-			"-Direction Outbound -Action Block -RemoteAddress 160.79.104.0/23 -Profile Any -Enabled True | Out-Null"
+		if old.Exists && g.Blocks(old.Str) {
+			r.Message = "这条规则已经生效，没有动"
+			break
+		}
+		r.Before["replaced"] = strconv.FormatBool(old.Exists)
+		// 建规则的写法和分享包 Anthropic网段直连阻断.ps1 一致
+		script := "Remove-NetFirewallRule -Name '" + g.RuleID + "' -ErrorAction SilentlyContinue; " +
+			"New-NetFirewallRule -Name '" + g.RuleID + "' -DisplayName 'Claude/Anthropic 直连阻断 " + g.CIDR + "' " +
+			"-Description 'Block direct outbound connections to Anthropic published API/Console IPv4 range; local Clash proxy remains available.' " +
+			"-Direction Outbound -Action Block -RemoteAddress " + g.CIDR + " -Protocol Any -Profile Any -Enabled True | Out-Null"
 		if err := x.run(60*time.Second, "powershell.exe", ps(script)...); err != nil {
 			return fail(err)
 		}
@@ -352,10 +363,21 @@ func (x *Executor) Restore(r *Record) error {
 		}
 		err = x.run(40*time.Second, "powershell.exe", ps(strings.Join(parts, "; "))...)
 	case "firewall_add":
-		if b["existed"] == "true" {
-			r.Message = "原来就有同名规则，已替换为等价规则，保留不删"
-		} else {
-			err = x.run(60*time.Second, "powershell.exe", ps("Remove-NetFirewallRule -Name '"+facts.FirewallRuleID+"' -ErrorAction SilentlyContinue")...)
+		// 名字来自备份记录，同用户的程序能改：只认白名单，写进命令的也只用白名单里的值
+		g, ok := facts.FirewallRangeByRule(p["name"])
+		if !ok {
+			return errors.New("规则名不合法")
+		}
+		switch {
+		case b["existed"] != "true":
+			err = x.run(60*time.Second, "powershell.exe", ps("Remove-NetFirewallRule -Name '"+g.RuleID+"' -ErrorAction SilentlyContinue")...)
+		case b["replaced"] == "true":
+			// 修复前这条规则没生效，原内容也不能从备份写回去（否则改过的备份能借 UAC 放开防火墙）：关掉它，和修复前一样不拦这个网段
+			if err = x.run(60*time.Second, "powershell.exe", ps("Disable-NetFirewallRule -Name '"+g.RuleID+"'")...); err == nil {
+				r.Message = "原来那条规则的内容放不回去，已把这条规则关掉，和修复前一样不拦这个网段"
+			}
+		default:
+			r.Message = "原来就有同名规则，保留不删"
 		}
 	}
 	if err != nil {

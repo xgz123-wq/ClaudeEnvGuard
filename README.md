@@ -1,4 +1,4 @@
-<!-- README_SYNC: source=working-tree; updated=2026-10-28 -->
+<!-- README_SYNC: source=working-tree; updated=2026-11-05 -->
 <p align="center">
   简体中文 · <a href="./README_EN.md">English</a>
 </p>
@@ -86,7 +86,7 @@ exe 自己就能完成体检、修复、还原、清理。下面三个功能只�
 ## 安全边界
 
 - **改之前先备份**：每个修复动作执行前，把旧值或旧文件存进 `%LOCALAPPDATA%\ClaudeEnvGuard\备份\`，失败自动撤回；修完 10 秒内可一键撤销，之后在「记录」页按项还原。
-- **只改白名单**：需要管理员的动作只允许改 Claude 代理策略、时区、IPv6、指定环境变量和指定防火墙规则。
+- **只改白名单**：需要管理员的动作只允许改 Claude 代理策略、时区、IPv6、指定环境变量和指定的两条防火墙规则（拦住直连 Anthropic 的两个网段）。
 - **清理先列清单**：清登录数据前列出每个要删的路径，勾「我核对过」才删；Claude 在运行时拒绝清理；删了什么写进记录，不含凭据内容。
 - **查不到就说查不到**：读不到、超时一律显示「未知」，不会显示「通过」。
 - **会联网访问的地址**：`claude.ai`（看 Claude 眼里的 IP，只经专用端口）、`ip.net.coffee` 和 `ipinfo.io`（查出口所在地和时区）；更新页另查 npm、VS Code 市场和 Claude Desktop 官方下载入口。除了这些查询，不向任何地方发送本机数据。
@@ -115,7 +115,7 @@ ceg update --check   # 只查三端版本
 
 ## 项目状态
 
-- **当前版本**：v2.6.2（2026-10-28），每个版本的 exe 都在 [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases)。
+- **当前版本**：源码 v2.6.3（2026-11-05，还没发版）；已发布的 exe 最新是 v2.6.2，每个版本都在 [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases)。
 - **测试**：Go 单元测试覆盖检查判定、修复、还原、清理和更新查版本，系统调用全部走模拟对象，不碰真机；没有接 CI，由作者打包前在本机运行。
 - **维护方式**：作者自用，随分享包一起更新；没有固定的发版计划。
 
@@ -126,6 +126,7 @@ ceg update --check   # 只查三端版本
 | 每项检查、命令行、数据存哪、更新页细节 | [新版/README.md](新版/README.md) |
 | 改代码、打包、发版本、回退旧版 | [维护者指南.md](维护者指南.md) |
 | 最近改了什么、哪些还没验证 | [维护记录.md](维护记录.md) |
+| 整套环境的架构入口（分享包里的网页，下载后双击打开） | [架构讲解.html](https://github.com/xgz123-wq/claude-env-share/blob/master/docs/配置/Claude环境/说明/架构讲解.html) |
 | 已完成的需求、五项自检对比、复盘（只留存） | [历史/](历史/) |
 
 ---

@@ -3,6 +3,7 @@ package facts
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -191,8 +192,97 @@ func TestDesktopPolicyAndFirewall(t *testing.T) {
 	}
 	fk.SetReg(platform.HKLM, KeyFirewall, "{GUID}", platform.RegValue{Type: "sz", Str: "v2.33|Action=Block|Active=TRUE|Dir=Out|RA4=160.79.104.0/255.255.254.0|Name=x|"})
 	fw := collectFirewall(fk)
-	if !fw.Exists || !fw.Active || !fw.Range || fw.Name != "{guid}" {
+	if st := fw.Rules[FirewallRanges[0].RuleID]; !st.OK() || st.Name != "{guid}" {
 		t.Errorf("等价规则应被识别：%+v", fw)
+	}
+}
+
+// 规则名和网段照分享包 Anthropic网段直连阻断.ps1；掩码写法由 CIDR 算出来核对，防止抄错。
+func TestFirewallRangesTable(t *testing.T) {
+	want := map[string]string{
+		"Claude-Anthropic-Direct-Block-160.79.104.0-23": "160.79.104.0/23",
+		"Claude-Anthropic-Direct-Block-153.61.224.0-22": "153.61.224.0/22",
+	}
+	if len(FirewallRanges) != len(want) {
+		t.Fatalf("应该正好 %d 个网段：%+v", len(want), FirewallRanges)
+	}
+	for _, g := range FirewallRanges {
+		if want[g.RuleID] != g.CIDR {
+			t.Errorf("规则名和网段对不上：%+v", g)
+		}
+		_, n, err := net.ParseCIDR(g.CIDR)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mask := n.IP.String() + "/" + net.IP(n.Mask).String(); mask != g.Mask {
+			t.Errorf("%s 的掩码写法应为 %s，表里是 %s", g.CIDR, mask, g.Mask)
+		}
+	}
+	if _, ok := FirewallRangeByRule("other"); ok {
+		t.Errorf("表外的名字不应找到")
+	}
+}
+
+func TestCollectFirewallTwoRanges(t *testing.T) {
+	first, second := FirewallRanges[0], FirewallRanges[1]
+	rule := func(action, active, dir, ra4 string) string {
+		return "v2.33|Action=" + action + "|Active=" + active + "|Dir=" + dir + "|RA4=" + ra4 + "|Name=x|"
+	}
+	good1 := rule("Block", "TRUE", "Out", first.Mask)
+	good2 := rule("Block", "TRUE", "Out", second.Mask)
+	cases := []struct {
+		name   string
+		rules  map[string]string // 规则名 → 注册表内容
+		broken []FirewallRange
+	}{
+		{"两条都在", map[string]string{first.RuleID: good1, second.RuleID: good2}, nil},
+		{"都没有", nil, []FirewallRange{first, second}},
+		{"缺第一条", map[string]string{second.RuleID: good2}, []FirewallRange{first}},
+		{"缺第二条", map[string]string{first.RuleID: good1}, []FirewallRange{second}},
+		{"第二条被关掉", map[string]string{first.RuleID: good1, second.RuleID: rule("Block", "FALSE", "Out", second.Mask)}, []FirewallRange{second}},
+		{"第二条不是阻断", map[string]string{first.RuleID: good1, second.RuleID: rule("Allow", "TRUE", "Out", second.Mask)}, []FirewallRange{second}},
+		{"第二条方向不对", map[string]string{first.RuleID: good1, second.RuleID: rule("Block", "TRUE", "In", second.Mask)}, []FirewallRange{second}},
+		{"第二条网段不对", map[string]string{first.RuleID: good1, second.RuleID: rule("Block", "TRUE", "Out", "198.51.100.0/255.255.255.0")}, []FirewallRange{second}},
+		{"第二条写成第一个网段", map[string]string{first.RuleID: good1, second.RuleID: good1}, []FirewallRange{second}},
+		{"两个网段都是名字不同的等价规则", map[string]string{"{a}": good1, "{b}": good2}, nil},
+		{"第二个网段的等价规则写 CIDR 也算", map[string]string{first.RuleID: good1, "{b}": rule("Block", "TRUE", "Out", second.CIDR)}, nil},
+		{"一条规则同时拦两个网段", map[string]string{"{c}": "v2.33|Action=Block|Active=TRUE|Dir=Out|RA4=" + first.Mask + "|RA4=" + second.Mask + "|"}, nil},
+		{"第二个网段的等价规则被关掉", map[string]string{first.RuleID: good1, "{b}": rule("Block", "FALSE", "Out", second.Mask)}, []FirewallRange{second}},
+		{"网段只出现在规则名里不算", map[string]string{first.RuleID: good1, "{b}": "v2.33|Action=Block|Active=TRUE|Dir=Out|RA4=198.51.100.0/255.255.255.0|Name=" + second.CIDR + "|"}, []FirewallRange{second}},
+		{"第二个网段掩码不对不算", map[string]string{first.RuleID: good1, "{b}": rule("Block", "TRUE", "Out", "153.61.224.0/255.255.254.0")}, []FirewallRange{second}},
+		{"同名规则不对时不看别的规则", map[string]string{first.RuleID: good1, second.RuleID: rule("Block", "FALSE", "Out", second.Mask), "{b}": good2}, []FirewallRange{second}},
+	}
+	for _, c := range cases {
+		fk := platform.NewFake(t.TempDir())
+		for n, v := range c.rules {
+			fk.SetReg(platform.HKLM, KeyFirewall, n, platform.RegValue{Type: "sz", Str: v})
+		}
+		fw := collectFirewall(fk)
+		if !fw.Read {
+			t.Errorf("%s：应读到规则：%+v", c.name, fw)
+		}
+		got := fw.Broken()
+		if len(got) != len(c.broken) {
+			t.Errorf("%s：没生效的网段应为 %+v，实际 %+v", c.name, c.broken, got)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.broken[i] {
+				t.Errorf("%s：没生效的网段应为 %+v，实际 %+v", c.name, c.broken, got)
+			}
+		}
+	}
+}
+
+// 有被关掉的等价规则，也有生效的：算生效，名字记生效的那条。
+func TestCollectFirewallEquivalentPrefersActive(t *testing.T) {
+	second := FirewallRanges[1]
+	fk := platform.NewFake(t.TempDir())
+	fk.SetReg(platform.HKLM, KeyFirewall, "{off1}", platform.RegValue{Type: "sz", Str: "v2.33|Action=Block|Active=FALSE|Dir=Out|RA4=" + second.Mask + "|"})
+	fk.SetReg(platform.HKLM, KeyFirewall, "{on}", platform.RegValue{Type: "sz", Str: "v2.33|Action=Block|Active=TRUE|Dir=Out|RA4=" + second.Mask + "|"})
+	fk.SetReg(platform.HKLM, KeyFirewall, "{off2}", platform.RegValue{Type: "sz", Str: "v2.33|Action=Block|Active=FALSE|Dir=Out|RA4=" + second.Mask + "|"})
+	if st := collectFirewall(fk).Rules[second.RuleID]; !st.OK() || st.Name != "{on}" {
+		t.Errorf("应记生效的那条：%+v", st)
 	}
 }
 

@@ -1,4 +1,4 @@
-<!-- README_SYNC: source=working-tree; updated=2026-10-28 -->
+<!-- README_SYNC: source=working-tree; updated=2026-11-05 -->
 <p align="center">
   <a href="./README.md">简体中文</a> · English
 </p>
@@ -88,7 +88,7 @@ The exe handles checks, fixes, restores and clean-ups on its own. The three feat
 ## Safety boundaries
 
 - **Backup before change**: every fix action saves the old value or file to `%LOCALAPPDATA%\ClaudeEnvGuard\备份\` first and rolls back on failure; undo within 10 seconds, or restore item by item later from Records.
-- **Allow-listed changes only**: elevated actions may only touch the Claude proxy policy, time zone, IPv6, specific environment variables and specific firewall rules.
+- **Allow-listed changes only**: elevated actions may only touch the Claude proxy policy, time zone, IPv6, specific environment variables and the two specific firewall rules that block direct connections to Anthropic's two IP ranges.
 - **Clean-ups list first**: every path to delete is shown and you must tick "我核对过" (I checked) before anything is removed; it refuses while Claude is running; what was deleted is logged, never the credentials themselves.
 - **Unknown means unknown**: anything unreadable or timed out shows as "Unknown", never "Pass".
 - **Network endpoints**: `claude.ai` (the IP Claude sees, only through the dedicated ports), `ip.net.coffee` and `ipinfo.io` (exit location and time zone); the Update page also queries npm, the VS Code Marketplace and Claude Desktop's official download endpoint. No other local data is sent anywhere.
@@ -117,7 +117,7 @@ All commands and exit codes: [新版/README.md (命令行)](新版/README.md#命
 
 ## Project status
 
-- **Current version**: v2.6.2 (2026-10-28); every version's exes are on [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases).
+- **Current version**: source v2.6.3 (2026-11-05, not released yet); the latest published exes are v2.6.2, and every version is on [Releases](https://github.com/xgz123-wq/ClaudeEnvGuard/releases).
 - **Tests**: Go unit tests cover check logic, fixes, restores, clean-ups and the version check, with all system calls behind a fake; there is no CI — the author runs them locally before each build.
 - **Maintenance**: built for the author's own use and updated alongside the share pack; no fixed release schedule.
 
@@ -128,6 +128,7 @@ All commands and exit codes: [新版/README.md (命令行)](新版/README.md#命
 | Every check, CLI, data locations, Update page details | [新版/README.md](新版/README.md) |
 | Changing code, building, releasing, rolling back | [维护者指南.md](维护者指南.md) |
 | Recent changes and what is still unverified | [维护记录.md](维护记录.md) |
+| Architecture entry point for the whole environment (a page in the share pack; download it, then double-click to open) | [架构讲解.html](https://github.com/xgz123-wq/claude-env-share/blob/master/docs/配置/Claude环境/说明/架构讲解.html) |
 | Finished requirements, comparisons and retrospectives (archive) | [历史/](历史/) |
 
 ---

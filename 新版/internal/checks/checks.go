@@ -1226,22 +1226,43 @@ func (e *ev) system() {
 	}
 	e.add(r)
 
-	// S7 防火墙阻断
-	fw := f.Firewall
-	r = model.Result{ID: "S7", Group: g, Title: "Anthropic 网段直连阻断", Kind: model.KindFixed, Advanced: true,
-		Target: "出站阻断 160.79.104.0/23"}
-	switch {
-	case !fw.Read:
-		r.Status, r.Detail = model.Unknown, "读取防火墙规则失败："+fw.Err
-	case fw.Exists && fw.Active && fw.Block && fw.Out && fw.Range:
-		r.Status, r.Current, r.Detail = model.Pass, "已启用（"+fw.Name+"）", "程序绕过代理直连 Anthropic 时会被拦下。"
-	case fw.Exists:
-		r.Status, r.Current, r.Detail = model.Warn, "规则存在但未启用或内容不对", "规则 "+fw.Name+" 没有生效。"
-		r.FixID, r.Advice = FixFirewall, "可选：点「一键修复」重建规则（需要管理员）。"
-	default:
-		r.Status, r.Current = model.Warn, "未安装（可选）"
-		r.Detail = "多一道保险：哪怕某个程序绕过了代理，也连不上 Anthropic 的 API 网段。"
-		r.FixID, r.Advice = FixFirewall, "可选：点「一键修复」添加防火墙规则（需要管理员，可还原）。"
+	e.add(firewallResult(f.Firewall, g))
+}
+
+// firewallResult 判定 S7：每个网段一条规则，都生效才通过；没生效的写明是哪个网段。
+func firewallResult(fw facts.FirewallFacts, g model.Group) model.Result {
+	var all []string
+	for _, rg := range facts.FirewallRanges {
+		all = append(all, rg.CIDR)
 	}
-	e.add(r)
+	r := model.Result{ID: "S7", Group: g, Title: "Anthropic 网段直连阻断", Kind: model.KindFixed, Advanced: true,
+		Target: "程序不经代理、直接连这些网段时都被拦下：" + strings.Join(all, "、")}
+	if !fw.Read {
+		r.Status, r.Detail = model.Unknown, "读取防火墙规则失败："+fw.Err
+		return r
+	}
+	broken := fw.Broken()
+	if len(broken) == 0 {
+		r.Status, r.Current = model.Pass, strconv.Itoa(len(all))+" 条都已生效"
+		r.Detail = "程序绕过代理直连 Anthropic 时会被拦下。"
+		for _, rg := range facts.FirewallRanges {
+			if n := fw.Rules[rg.RuleID].Name; n != rg.RuleID {
+				r.Detail += rg.CIDR + " 用的是名字不同、内容一样的规则 " + n + "。"
+			}
+		}
+		return r
+	}
+	var cur, why []string
+	for _, rg := range broken {
+		if st := fw.Rules[rg.RuleID]; st.Exists {
+			cur = append(cur, rg.CIDR+" 没生效")
+			why = append(why, rg.CIDR+" 有规则（"+st.Name+"），但被关掉了或内容不对，拦不住。")
+		} else {
+			cur = append(cur, rg.CIDR+" 没装")
+			why = append(why, rg.CIDR+" 还没有规则，程序绕过代理时能直接连上这个网段。")
+		}
+	}
+	r.Status, r.Current, r.Detail, r.FixID = model.Warn, strings.Join(cur, "；"), strings.Join(why, ""), FixFirewall
+	r.Advice = "可选：多一道保险。点「一键修复」补上有问题的（需要管理员，每条都能单独还原），已生效的不动。"
+	return r
 }

@@ -254,7 +254,7 @@ func validateStep(st model.Step) error {
 			return errors.New("时区名不合法")
 		}
 	case "firewall_add":
-		if p["name"] != facts.FirewallRuleID {
+		if _, ok := facts.FirewallRangeByRule(p["name"]); !ok {
 			return errors.New("规则名不合法")
 		}
 	default:

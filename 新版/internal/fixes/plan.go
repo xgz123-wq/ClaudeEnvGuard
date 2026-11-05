@@ -101,7 +101,9 @@ func Plan(f *facts.Facts, t model.Target, results []model.Result, opt Options) m
 			a.DefaultOn = anyFail(rs)
 			add(a, rs)
 		case checks.FixFirewall:
-			add(planFirewall(f), rs)
+			for _, a := range planFirewall(f) {
+				add(a, rs)
+			}
 		}
 	}
 	if len(plan.Actions) == 0 {
@@ -454,11 +456,53 @@ func planIPv6(f *facts.Facts) *model.FixAction {
 		Changes: []model.Change{{What: `HKLM\` + facts.KeyTcpip6 + ` DisabledComponents`, From: dwordText(f.System.IPv6Disabled), To: "0x20（IPv4 优先）"}}}
 }
 
-func planFirewall(f *facts.Facts) *model.FixAction {
-	return &model.FixAction{ID: checks.FixFirewall, Title: "添加 Anthropic 网段直连阻断规则", NeedsAdmin: true,
-		Note:    "只拦截不经代理、直接连 160.79.104.0/23 的出站连接；经本机代理的流量不受影响。",
-		Steps:   []model.Step{step("firewall_add", "name", facts.FirewallRuleID)},
-		Changes: []model.Change{{What: "Windows 防火墙出站规则", From: map[bool]string{true: "存在但未生效", false: "无"}[f.Firewall.Exists], To: "阻断 160.79.104.0/23"}}}
+// FirewallActionID 是一条防火墙规则的修复动作 ID。每条规则一个动作，才能分开勾选、分开还原。
+func FirewallActionID(g facts.FirewallRange) string {
+	return checks.FixFirewall + "." + strings.ReplaceAll(g.CIDR, "/", "-")
+}
+
+// planFirewall 只为没生效的网段生成动作，已生效的规则不进计划。
+func planFirewall(f *facts.Facts) []*model.FixAction {
+	var out []*model.FixAction
+	for _, g := range f.Firewall.Broken() {
+		st := f.Firewall.Rules[g.RuleID]
+		a := &model.FixAction{ID: FirewallActionID(g), Title: "拦住直接连 " + g.CIDR + " 的程序", NeedsAdmin: true,
+			Note:  "只拦不经代理、直接连这个网段的程序；经本机代理的流量不受影响。",
+			Steps: []model.Step{step("firewall_add", "name", g.RuleID)}}
+		from := "没有"
+		switch {
+		case st.Exists && st.Name == g.RuleID:
+			from = "有规则但没生效"
+			a.Title = "修好 " + g.CIDR + " 的拦截规则"
+			a.Note += "原来那条规则会被换成正确的；之后还原时原内容放不回去，只会把这条规则关掉。"
+		case st.Exists:
+			from = "有一条没生效的规则（" + st.Name + "，不动它）"
+		}
+		a.Changes = []model.Change{{What: "Windows 防火墙规则", From: from, To: "拦住 " + g.CIDR}}
+		out = append(out, a)
+	}
+	return out
+}
+
+// MatchItems 把命令行 --items 的名字对到计划里的动作。ceg check 显示的是 S7 的修复 ID（sys.firewall），写它等于计划里的防火墙规则都选。
+func MatchItems(p model.FixPlan, items []string) (ids, unknown []string) {
+	for _, it := range items {
+		it = strings.TrimSpace(it)
+		if it == "" {
+			continue
+		}
+		hit := false
+		for _, a := range p.Actions {
+			if a.ID == it || (it == checks.FixFirewall && strings.HasPrefix(a.ID, checks.FixFirewall+".")) {
+				ids = append(ids, a.ID)
+				hit = true
+			}
+		}
+		if !hit {
+			unknown = append(unknown, it)
+		}
+	}
+	return ids, unknown
 }
 
 // Describe 用于日志：一行说明一个动作。

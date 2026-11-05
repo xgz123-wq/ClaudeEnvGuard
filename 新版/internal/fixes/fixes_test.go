@@ -260,7 +260,8 @@ func TestValidateStep(t *testing.T) {
 		step("reg_set", "root", "HKLM", "key", facts.KeyTZAuto, "name", "Start", "type", "dword", "value", "4"),
 		step("reg_delete", "root", "HKLM", "key", facts.KeyMachineEnv, "name", "ANTHROPIC_BASE_URL"),
 		step("tz_set", "id", "Tokyo Standard Time"),
-		step("firewall_add", "name", facts.FirewallRuleID),
+		step("firewall_add", "name", "Claude-Anthropic-Direct-Block-160.79.104.0-23"),
+		step("firewall_add", "name", "Claude-Anthropic-Direct-Block-153.61.224.0-22"),
 	}
 	bad := []model.Step{
 		step("reg_set", "root", "HKLM", "key", facts.KeyPolicy, "name", "egressProxyUrl", "type", "sz", "value", "http://evil.com:80"),
@@ -268,6 +269,10 @@ func TestValidateStep(t *testing.T) {
 		step("reg_delete", "root", "HKLM", "key", facts.KeyMachineEnv, "name", "Path"),
 		step("tz_set", "id", `x" & calc`),
 		step("firewall_add", "name", "other"),
+		step("firewall_add", "name", ""),
+		step("firewall_add", "name", "Claude-Anthropic-Direct-Block-160.79.104.0-24"),
+		step("firewall_add", "name", "claude-anthropic-direct-block-153.61.224.0-22"),
+		step("firewall_add", "name", "Claude-Anthropic-Direct-Block-153.61.224.0-22'; calc; '"),
 		step("json_env", "path", `C:\x.json`),
 	}
 	for _, s := range ok {
@@ -407,6 +412,294 @@ func TestPlanBrowserCreate(t *testing.T) {
 	p = Plan(f, tg, rs, Options{})
 	if !strings.Contains(p.Actions[0].Title, "账号12") {
 		t.Errorf("默认名字冲突应加序号：%s", p.Actions[0].Title)
+	}
+}
+
+// ---------------------------------------------------------------- 防火墙规则（S7）
+
+const (
+	fwRule160  = "Claude-Anthropic-Direct-Block-160.79.104.0-23"
+	fwRule153  = "Claude-Anthropic-Direct-Block-153.61.224.0-22"
+	fwGoodRule = "v2.33|Action=Block|Active=TRUE|Dir=Out|RA4="
+)
+
+// firewallPlan 按给定的防火墙现场生成计划，只带 S7 这一项结论。
+func firewallPlan(fw facts.FirewallFacts) model.FixPlan {
+	f := &facts.Facts{Settings: appconfig.Defaults(), Firewall: fw}
+	return Plan(f, model.Target{}, []model.Result{{ID: "S7", Status: model.Warn, FixID: checks.FixFirewall}}, Options{})
+}
+
+func firewallRule(ok bool, name string) facts.FirewallRule {
+	return facts.FirewallRule{Exists: true, Name: name, Active: ok, Block: true, Out: true, Range: true}
+}
+
+// elevatedFake 是非管理员进程：需要管理员的动作走提权子进程，和真机一样。
+func elevatedFake(t *testing.T) *platform.Fake {
+	t.Helper()
+	fk := newFake(t)
+	fk.ElevateFunc = func(exe string, args []string) (int, error) {
+		code, ok := HandleElevatedArgs(fk, args)
+		if !ok {
+			t.Fatalf("提权参数没被识别：%v", args)
+		}
+		return code, nil
+	}
+	return fk
+}
+
+func TestPlanFirewallOnlyBrokenRule(t *testing.T) {
+	ok160 := facts.FirewallFacts{Read: true, Rules: map[string]facts.FirewallRule{fwRule160: firewallRule(true, fwRule160)}}
+	p := firewallPlan(ok160)
+	if len(p.Actions) != 1 {
+		t.Fatalf("只该修缺的那条：%+v", p.Actions)
+	}
+	a := p.Actions[0]
+	if a.ID != "sys.firewall.153.61.224.0-22" || !a.NeedsAdmin || a.DefaultOn || len(a.CheckIDs) != 1 || a.CheckIDs[0] != "S7" {
+		t.Errorf("动作不对：%+v", a)
+	}
+	if len(a.Steps) != 1 || a.Steps[0].Op != "firewall_add" || a.Steps[0].Params["name"] != fwRule153 {
+		t.Errorf("只该动第二条：%+v", a.Steps)
+	}
+	text := a.Title + a.Note + a.Changes[0].What + a.Changes[0].From + a.Changes[0].To
+	if !strings.Contains(text, "153.61.224.0/22") || strings.Contains(text, "160.79.104.0") {
+		t.Errorf("文字只该提有问题的网段：%s", text)
+	}
+	if a.Changes[0].From != "没有" {
+		t.Errorf("缺的规则改之前应为「没有」：%+v", a.Changes)
+	}
+
+	// 两条都缺：两个动作，能分开勾选
+	p = firewallPlan(facts.FirewallFacts{Read: true})
+	if len(p.Actions) != 2 || p.Actions[0].Steps[0].Params["name"] != fwRule160 || p.Actions[1].Steps[0].Params["name"] != fwRule153 {
+		t.Fatalf("两条都缺应有两个动作：%+v", p.Actions)
+	}
+	if p.Actions[0].ID == p.Actions[1].ID {
+		t.Errorf("两个动作的 ID 不能相同：%s", p.Actions[0].ID)
+	}
+
+	// 同名但不对：说明会被换掉；别的名字的等价规则被关掉：不动它，只补同名规则
+	p = firewallPlan(facts.FirewallFacts{Read: true, Rules: map[string]facts.FirewallRule{
+		fwRule160: firewallRule(false, fwRule160),
+		fwRule153: firewallRule(false, "{guid}"),
+	}})
+	if len(p.Actions) != 2 {
+		t.Fatalf("两条都没生效应有两个动作：%+v", p.Actions)
+	}
+	if !strings.Contains(p.Actions[0].Note, "换成正确的") || p.Actions[0].Changes[0].From != "有规则但没生效" {
+		t.Errorf("同名不对的规则应说明会被换掉：%+v", p.Actions[0])
+	}
+	if strings.Contains(p.Actions[1].Note, "换成正确的") || !strings.Contains(p.Actions[1].Changes[0].From, "{guid}") {
+		t.Errorf("别的名字的规则不动：%+v", p.Actions[1])
+	}
+
+	// 都生效：S7 通过，不进计划
+	all := facts.FirewallFacts{Read: true, Rules: map[string]facts.FirewallRule{fwRule160: firewallRule(true, fwRule160), fwRule153: firewallRule(true, "{guid}")}}
+	f := &facts.Facts{Settings: appconfig.Defaults(), Firewall: all}
+	if p := Plan(f, model.Target{}, []model.Result{{ID: "S7", Status: model.Pass}}, Options{}); len(p.Actions) != 0 {
+		t.Errorf("都生效不该有动作：%+v", p.Actions)
+	}
+}
+
+// 修复只动缺的那条；还原也只动这一条。
+func TestFirewallFixTouchesOnlyOneRule(t *testing.T) {
+	fk := elevatedFake(t)
+	fk.SetReg(platform.HKLM, facts.KeyFirewall, fwRule160, platform.RegValue{Type: "sz", Str: fwGoodRule + "160.79.104.0/255.255.254.0|"})
+	p := firewallPlan(facts.FirewallFacts{Read: true, Rules: map[string]facts.FirewallRule{fwRule160: firewallRule(true, fwRule160)}})
+	res := Apply(fk, p, []string{p.Actions[0].ID}, "self.exe")
+	if !res.OK {
+		t.Fatalf("执行失败：%+v", res)
+	}
+	if len(fk.RunLog) != 1 {
+		t.Fatalf("应该只跑一次命令：%v", fk.RunLog)
+	}
+	cmd := fk.RunLog[0]
+	for _, want := range []string{"New-NetFirewallRule -Name '" + fwRule153 + "'", "-RemoteAddress 153.61.224.0/22", "-Direction Outbound", "-Action Block", "-Protocol Any", "-Profile Any", "-Enabled True", "直连阻断 153.61.224.0/22"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("命令缺少 %s：%s", want, cmd)
+		}
+	}
+	if strings.Contains(cmd, "160.79.104.0") {
+		t.Errorf("不该碰已生效的第一条：%s", cmd)
+	}
+
+	rr := Restore(fk, res.BackupID, "self.exe")
+	if !rr.OK {
+		t.Fatalf("还原失败：%+v", rr)
+	}
+	if len(fk.RunLog) != 2 || !strings.Contains(fk.RunLog[1], "Remove-NetFirewallRule -Name '"+fwRule153+"'") || strings.Contains(fk.RunLog[1], "160.79.104.0") {
+		t.Errorf("还原应只删补上的那条：%v", fk.RunLog)
+	}
+}
+
+// 两条都补时能分开还原，每条只删自己。
+func TestFirewallRestoreEachRule(t *testing.T) {
+	fk := elevatedFake(t)
+	p := firewallPlan(facts.FirewallFacts{Read: true})
+	res := Apply(fk, p, []string{p.Actions[0].ID, p.Actions[1].ID}, "self.exe")
+	if !res.OK || len(fk.RunLog) != 2 {
+		t.Fatalf("执行失败：%+v %v", res, fk.RunLog)
+	}
+	if b := ListBackups(fk.P.LocalAppData)[0]; len(b.Items) != 2 || !b.Items[0].OK || !b.Items[1].OK {
+		t.Fatalf("记录页应有两项：%+v", b.Items)
+	}
+	rr := RestoreItems(fk, res.BackupID, []string{p.Actions[1].ID}, "self.exe")
+	if !rr.OK || len(fk.RunLog) != 3 || !strings.Contains(fk.RunLog[2], "Remove-NetFirewallRule -Name '"+fwRule153+"'") || strings.Contains(fk.RunLog[2], fwRule160) {
+		t.Fatalf("应只还原第二条：%+v %v", rr, fk.RunLog)
+	}
+	b := ListBackups(fk.P.LocalAppData)[0]
+	if b.Restored || b.Items[0].RestoredAt != "" || b.Items[1].RestoredAt == "" {
+		t.Fatalf("第一条应保持现状：%+v", b)
+	}
+	rr = RestoreItems(fk, res.BackupID, []string{p.Actions[0].ID}, "self.exe")
+	if !rr.OK || len(fk.RunLog) != 4 || !strings.Contains(fk.RunLog[3], "Remove-NetFirewallRule -Name '"+fwRule160+"'") || strings.Contains(fk.RunLog[3], fwRule153) {
+		t.Fatalf("应只还原第一条：%+v %v", rr, fk.RunLog)
+	}
+	if b := ListBackups(fk.P.LocalAppData)[0]; !b.Restored {
+		t.Errorf("两条都还原后应整次标记：%+v", b)
+	}
+}
+
+// 同名但不对的规则：换成正确的；还原时不写回备份内容，只把它关掉。
+func TestFirewallReplacedRuleRestoreTurnsItOff(t *testing.T) {
+	fk := elevatedFake(t)
+	fk.SetReg(platform.HKLM, facts.KeyFirewall, fwRule153, platform.RegValue{Type: "sz", Str: "v2.33|Action=Block|Active=FALSE|Dir=Out|RA4=153.61.224.0/255.255.252.0|"})
+	p := firewallPlan(facts.FirewallFacts{Read: true, Rules: map[string]facts.FirewallRule{
+		fwRule160: firewallRule(true, fwRule160), fwRule153: firewallRule(false, fwRule153)}})
+	if len(p.Actions) != 1 {
+		t.Fatalf("只该修不对的那条：%+v", p.Actions)
+	}
+	res := Apply(fk, p, []string{p.Actions[0].ID}, "self.exe")
+	if !res.OK || len(fk.RunLog) != 1 {
+		t.Fatalf("执行失败：%+v %v", res, fk.RunLog)
+	}
+	if !strings.Contains(fk.RunLog[0], "Remove-NetFirewallRule -Name '"+fwRule153+"'") || !strings.Contains(fk.RunLog[0], "New-NetFirewallRule -Name '"+fwRule153+"'") {
+		t.Errorf("应换成正确的规则：%s", fk.RunLog[0])
+	}
+	rr := Restore(fk, res.BackupID, "self.exe")
+	if !rr.OK || len(fk.RunLog) != 2 {
+		t.Fatalf("还原失败：%+v %v", rr, fk.RunLog)
+	}
+	if !strings.Contains(fk.RunLog[1], "Disable-NetFirewallRule -Name '"+fwRule153+"'") || strings.Contains(fk.RunLog[1], "Remove-NetFirewallRule") {
+		t.Errorf("还原应把规则关掉，不是删掉：%s", fk.RunLog[1])
+	}
+	if !strings.Contains(rr.Outcomes[0].Message, "关掉") {
+		t.Errorf("应说明还原做了什么：%+v", rr.Outcomes)
+	}
+}
+
+// 计划是上次检查生成的；执行时规则已经对了（比如刚跑过分享包脚本）就不动，还原也不动。
+func TestFirewallGoodRuleNotTouchedAtApply(t *testing.T) {
+	fk := elevatedFake(t)
+	fk.SetReg(platform.HKLM, facts.KeyFirewall, fwRule153, platform.RegValue{Type: "sz", Str: fwGoodRule + "153.61.224.0/255.255.252.0|"})
+	p := firewallPlan(facts.FirewallFacts{Read: true, Rules: map[string]facts.FirewallRule{fwRule160: firewallRule(true, fwRule160)}})
+	res := Apply(fk, p, []string{p.Actions[0].ID}, "self.exe")
+	if !res.OK || len(fk.RunLog) != 0 {
+		t.Fatalf("已生效的规则不该动：%+v %v", res, fk.RunLog)
+	}
+	if rr := Restore(fk, res.BackupID, "self.exe"); !rr.OK || len(fk.RunLog) != 0 {
+		t.Errorf("没动过的规则还原也不该动：%+v %v", rr, fk.RunLog)
+	}
+}
+
+// v2.6.2 及更早的备份：动作 ID 是 sys.firewall，只有 existed，照样能还原。
+func TestFirewallOldBackupStillRestores(t *testing.T) {
+	fk := elevatedFake(t)
+	newOld := func(id, existed string) string {
+		dir := filepath.Join(BackupRoot(fk.P.LocalAppData), id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_ = writeJSON(filepath.Join(dir, manifestUser), Manifest{ID: id, Actions: []string{"添加 Anthropic 网段直连阻断规则"}})
+		_ = writeJSON(filepath.Join(dir, manifestAdmin), Manifest{ID: id, Records: []Record{{ActionID: "sys.firewall", Op: "firewall_add",
+			Params: map[string]string{"name": fwRule160}, Before: map[string]string{"existed": existed}, Applied: true}}})
+		return id
+	}
+	rr := RestoreItems(fk, newOld("old-added", "false"), []string{"sys.firewall"}, "self.exe")
+	if !rr.OK || len(fk.RunLog) != 1 || !strings.Contains(fk.RunLog[0], "Remove-NetFirewallRule -Name '"+fwRule160+"'") {
+		t.Errorf("旧备份里新加的规则应能删：%+v %v", rr, fk.RunLog)
+	}
+	rr = Restore(fk, newOld("old-kept", "true"), "self.exe")
+	if !rr.OK || len(fk.RunLog) != 1 || !strings.Contains(rr.Outcomes[0].Message, "保留") {
+		t.Errorf("旧备份里同名规则照旧保留：%+v %v", rr, fk.RunLog)
+	}
+}
+
+// 规则名进 PowerShell 命令：请求文件和备份记录被改过时，每条路都得拒绝，一条命令都不能跑。
+func TestFirewallRejectsOtherNames(t *testing.T) {
+	const evil = "x'; calc; '"
+	for _, name := range []string{"other", evil, fwRule153 + "'; calc; '"} {
+		fk := newFake(t)
+		x := &Executor{Sys: fk, Dir: t.TempDir()}
+		if r := x.Apply("a", step("firewall_add", "name", name)); r.Applied || !strings.Contains(r.Message, "不合法") {
+			t.Errorf("%s：执行应拒绝：%+v", name, r)
+		}
+		rec := Record{ActionID: "a", Op: "firewall_add", Params: map[string]string{"name": name}, Before: map[string]string{"existed": "false"}, Applied: true}
+		if err := x.Restore(&rec); err == nil || rec.Restored {
+			t.Errorf("%s：还原应拒绝：%v", name, err)
+		}
+		rec.Before = map[string]string{"existed": "true", "replaced": "true"}
+		if err := x.Restore(&rec); err == nil {
+			t.Errorf("%s：还原应拒绝：%v", name, err)
+		}
+
+		// 提权执行：请求文件被改
+		dir := filepath.Join(BackupRoot(fk.P.LocalAppData), "apply")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_ = writeJSON(filepath.Join(dir, requestAdmin), []model.FixAction{{ID: "evil", Title: "篡改", Steps: []model.Step{step("firewall_add", "name", name)}}})
+		ElevatedApply(fk, dir)
+		var outs []model.StepOutcome
+		_ = readJSON(filepath.Join(dir, resultAdmin), &outs)
+		if len(outs) != 1 || outs[0].OK || !strings.Contains(outs[0].Message, "拒绝") {
+			t.Errorf("%s：提权执行应拒绝：%+v", name, outs)
+		}
+
+		// 提权还原：管理员清单被改
+		dir = filepath.Join(BackupRoot(fk.P.LocalAppData), "restore")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_ = writeJSON(filepath.Join(dir, manifestAdmin), Manifest{ID: "restore", Records: []Record{rec}})
+		ElevatedRestore(fk, dir)
+		_ = readJSON(filepath.Join(dir, resultAdmin), &outs)
+		if len(outs) != 1 || outs[0].OK || !strings.Contains(outs[0].Message, "不可信") {
+			t.Errorf("%s：提权还原应拒绝：%+v", name, outs)
+		}
+
+		// 本身就是管理员的进程：记录在普通清单里，同样不能跑
+		fk.Admin = true
+		dir = filepath.Join(BackupRoot(fk.P.LocalAppData), "user")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_ = writeJSON(filepath.Join(dir, manifestUser), Manifest{ID: "user", Records: []Record{rec}})
+		if r := RestoreItems(fk, "user", nil, "self.exe"); r.OK {
+			t.Errorf("%s：普通清单里的坏记录应还原失败：%+v", name, r)
+		}
+
+		if len(fk.RunLog) != 0 {
+			t.Errorf("%s：不该跑任何命令：%v", name, fk.RunLog)
+		}
+	}
+}
+
+func TestMatchItems(t *testing.T) {
+	p := model.FixPlan{Actions: []model.FixAction{{ID: "sys.timezone"}, {ID: "sys.firewall.160.79.104.0-23"}, {ID: "sys.firewall.153.61.224.0-22"}}}
+	ids, unknown := MatchItems(p, []string{" sys.firewall.153.61.224.0-22 ", "", "cli.proxy"})
+	if len(ids) != 1 || ids[0] != "sys.firewall.153.61.224.0-22" || len(unknown) != 1 || unknown[0] != "cli.proxy" {
+		t.Errorf("按动作 ID 选不对：%v %v", ids, unknown)
+	}
+	ids, unknown = MatchItems(p, []string{"sys.firewall"})
+	if len(ids) != 2 || len(unknown) != 0 {
+		t.Errorf("sys.firewall 应选中计划里的防火墙规则：%v %v", ids, unknown)
+	}
+	ids, unknown = MatchItems(p, []string{"sys"})
+	if len(ids) != 0 || len(unknown) != 1 {
+		t.Errorf("别的前缀不该展开：%v %v", ids, unknown)
+	}
+	if ids, unknown = MatchItems(model.FixPlan{}, []string{"sys.firewall"}); len(ids) != 0 || len(unknown) != 1 {
+		t.Errorf("计划里没有防火墙规则时应报没有：%v %v", ids, unknown)
 	}
 }
 
