@@ -884,10 +884,10 @@ func (e *ev) cli() {
 	case !guardOn:
 		r.Status, r.Detail = model.NA, "没装直连防护，自动更新开着也没关系。"
 	case env["DISABLE_AUTOUPDATER"] == "1" || strings.EqualFold(env["DISABLE_AUTOUPDATER"], "true"):
-		r.Status, r.Detail = model.Pass, "自动更新已关，程序不会悄悄变化导致防护失效。"
+		r.Status, r.Detail = model.Pass, "自动更新已关，程序不会悄悄变化。"
 	default:
 		r.Status = model.Warn
-		r.Detail = "直连防护按程序哈希绑定，Claude Code 自己更新后防护会对不上。"
+		r.Detail = "直连防护按 Anthropic 签名放行，更新后不会失效；但自动更新开着，程序会不经更新流程悄悄变化。"
 		r.FixID = FixCLIAutoUpdate
 		r.Advice = "点「一键修复」关闭自动更新；以后按分享包的更新流程手动升级。"
 	}
