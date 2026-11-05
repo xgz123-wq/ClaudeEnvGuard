@@ -6,9 +6,9 @@ import (
 )
 
 func TestParseAndBuild(t *testing.T) {
-	old := `--user-data-dir="C:\Users\张三\AppData\Local\ClaudeAccountBrowsers\KK\UserData" --proxy-server="http://127.0.0.1:7890" --disable-quic --lang=zh-CN https://claude.ai/`
+	old := `--user-data-dir="C:\Users\张三\AppData\Local\ClaudeAccountBrowsers\Demo\UserData" --proxy-server="http://127.0.0.1:7890" --disable-quic --lang=zh-CN https://claude.ai/`
 	f := Parse(old)
-	if f.Get(FlagUserDataDir) != `C:\Users\张三\AppData\Local\ClaudeAccountBrowsers\KK\UserData` {
+	if f.Get(FlagUserDataDir) != `C:\Users\张三\AppData\Local\ClaudeAccountBrowsers\Demo\UserData` {
 		t.Errorf("中文路径解析不对：%q", f.Get(FlagUserDataDir))
 	}
 	if len(f.Extras) != 1 || f.Extras[0] != "--disable-quic" || len(f.URLs) != 1 {

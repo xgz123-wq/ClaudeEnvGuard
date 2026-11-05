@@ -106,13 +106,13 @@ func TestDesktopAllowlistOnly(t *testing.T) {
 
 func TestBrowserCleanOnlySelected(t *testing.T) {
 	fk := platform.NewFake(t.TempDir())
-	ud := filepath.Join(fk.P.LocalAppData, "ClaudeAccountBrowsers", "KK", "UserData")
+	ud := filepath.Join(fk.P.LocalAppData, "ClaudeAccountBrowsers", "Demo", "UserData")
 	other := filepath.Join(fk.P.LocalAppData, "ClaudeAccountBrowsers", "账号1", "UserData")
 	write(t, filepath.Join(ud, "Default", "Network", "Cookies"), "c")
 	write(t, filepath.Join(ud, "Default", "Bookmarks"), "b")
 	write(t, filepath.Join(ud, "Profile 1", "Login Data"), "l")
 	write(t, filepath.Join(other, "Default", "Network", "Cookies"), "c")
-	f := &facts.Facts{Browsers: []facts.Browser{{Name: "KK", UserDataDir: ud}}}
+	f := &facts.Facts{Browsers: []facts.Browser{{Name: "Demo", UserDataDir: ud}}}
 	f.Selected = &f.Browsers[0]
 	p := Plan(fk, KindBrowser, f)
 	if strings.Join(paths(p.Items), ",") != "Network,Login Data" {

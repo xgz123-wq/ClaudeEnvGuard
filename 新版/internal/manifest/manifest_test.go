@@ -28,7 +28,7 @@ const sample = `{
   "端口": { "通用": 43865, "浏览器": 43866, "Desktop": 43867 },
   "脚本根目录": "C:\\Users\\u\\Desktop\\AI应用开发",
   "专用浏览器": [
-    { "别名": "KK-Claude", "数据目录": "C:\\Users\\u\\AppData\\Local\\ClaudeAccountBrowsers\\KK-Claude\\UserData", "快捷方式": "C:\\Users\\u\\Desktop\\KK-Claude-专用Chrome.lnk" }
+    { "别名": "Demo-Claude", "数据目录": "C:\\Users\\u\\AppData\\Local\\ClaudeAccountBrowsers\\Demo-Claude\\UserData", "快捷方式": "C:\\Users\\u\\Desktop\\Demo-Claude-专用Chrome.lnk" }
   ]
 }`
 
@@ -46,8 +46,8 @@ func TestLoad(t *testing.T) {
 		if m.Ports != (Ports{43865, 43866, 43867}) || !m.PortsValid() {
 			t.Errorf("端口不对：%+v", m.Ports)
 		}
-		if m.ScriptRoot != `C:\Users\u\Desktop\AI应用开发` || len(m.Browsers) != 1 || m.Browsers[0].Alias != "KK-Claude" ||
-			m.Browsers[0].Shortcut != `C:\Users\u\Desktop\KK-Claude-专用Chrome.lnk` {
+		if m.ScriptRoot != `C:\Users\u\Desktop\AI应用开发` || len(m.Browsers) != 1 || m.Browsers[0].Alias != "Demo-Claude" ||
+			m.Browsers[0].Shortcut != `C:\Users\u\Desktop\Demo-Claude-专用Chrome.lnk` {
 			t.Errorf("内容不对：%+v", m)
 		}
 	}

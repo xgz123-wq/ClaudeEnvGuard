@@ -12,7 +12,7 @@ func TestLoadSaveAndFallbacks(t *testing.T) {
 		t.Errorf("没有设置文件应返回默认值：%+v %q", s, note)
 	}
 	s := Defaults()
-	s.SelectedBrowser, s.RegionOverride = "KK", "jp"
+	s.SelectedBrowser, s.RegionOverride = "Demo", "jp"
 	if err := Save(dir, s); err != nil {
 		t.Fatal(err)
 	}
@@ -29,8 +29,8 @@ func TestLoadSaveAndFallbacks(t *testing.T) {
 	if got, note := Load(dir); got != Defaults() || note == "" {
 		t.Errorf("损坏的设置应回退默认并提示：%+v %q", got, note)
 	}
-	_ = os.WriteFile(p, []byte(`{"portCli": 70000, "selectedBrowser": "KK"}`), 0o644)
-	if got, note := Load(dir); got.PortCLI != DefaultPortCLI || got.SelectedBrowser != "KK" || note == "" {
+	_ = os.WriteFile(p, []byte(`{"portCli": 70000, "selectedBrowser": "Demo"}`), 0o644)
+	if got, note := Load(dir); got.PortCLI != DefaultPortCLI || got.SelectedBrowser != "Demo" || note == "" {
 		t.Errorf("非法端口应恢复默认端口但保留其他设置：%+v %q", got, note)
 	}
 }

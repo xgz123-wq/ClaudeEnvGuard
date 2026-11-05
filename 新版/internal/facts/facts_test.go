@@ -33,15 +33,15 @@ func write(t *testing.T, p, s string) {
 func TestBrowserDiscovery(t *testing.T) {
 	fk := platform.NewFake(t.TempDir())
 	root := StandardRoot(fk.P)
-	kk := filepath.Join(root, "KK-Claude", "UserData")
+	kk := filepath.Join(root, "Demo-Claude", "UserData")
 	write(t, filepath.Join(kk, "Local State"), "{}")
 	write(t, filepath.Join(kk, "Default", "Preferences"), `{"intl":{"accept_languages":"zh-CN,zh"}}`)
 	old := filepath.Join(root, "账号1", "UserData")
 	write(t, filepath.Join(old, "Local State"), "{}")
 	past := time.Now().Add(-48 * time.Hour)
 	_ = os.Chtimes(filepath.Join(old, "Local State"), past, past)
-	_ = fk.WriteShortcut(platform.Shortcut{Path: filepath.Join(fk.P.Desktop, "KK-Claude-专用Chrome.lnk"), Target: `C:\chrome.exe`,
-		Args: `--user-data-dir="%LOCALAPPDATA%\ClaudeAccountBrowsers\KK-Claude\UserData" --proxy-server="socks5://127.0.0.1:43866"`})
+	_ = fk.WriteShortcut(platform.Shortcut{Path: filepath.Join(fk.P.Desktop, "Demo-Claude-专用Chrome.lnk"), Target: `C:\chrome.exe`,
+		Args: `--user-data-dir="%LOCALAPPDATA%\ClaudeAccountBrowsers\Demo-Claude\UserData" --proxy-server="socks5://127.0.0.1:43866"`})
 	// 和 Claude 无关的独立配置浏览器：不应列出
 	_ = fk.WriteShortcut(platform.Shortcut{Path: filepath.Join(fk.P.Desktop, "NotebookLM.lnk"), Target: `C:\chrome.exe`, Args: `--user-data-dir="D:\nb"`})
 	// 标准目录外、但走浏览器专用端口：应列出
@@ -61,14 +61,14 @@ func TestBrowserDiscovery(t *testing.T) {
 	for _, b := range list {
 		names = append(names, b.Name)
 	}
-	if strings.Join(names, ",") != "KK-Claude,账号1,工作号" {
+	if strings.Join(names, ",") != "Demo-Claude,账号1,工作号" {
 		t.Fatalf("发现的浏览器不对：%v", names)
 	}
-	if sel == nil || sel.Name != "KK-Claude" {
+	if sel == nil || sel.Name != "Demo-Claude" {
 		t.Fatalf("应默认选最近使用的：%+v", sel)
 	}
 	if len(sel.Shortcuts) != 1 || len(sel.Running) != 1 || sel.Running[0].PID != 10 || sel.PrefLang != "zh-CN,zh" {
-		t.Errorf("KK 详情不对：%+v", sel)
+		t.Errorf("Demo 详情不对：%+v", sel)
 	}
 	s := appconfig.Defaults()
 	s.SelectedBrowser = "账号1"
@@ -414,7 +414,7 @@ func TestHashGuardTargetsSignature(t *testing.T) {
 func TestBrowserDiscoveryWithManifest(t *testing.T) {
 	fk := platform.NewFake(t.TempDir())
 	root := StandardRoot(fk.P)
-	kk := filepath.Join(root, "KK-Claude", "UserData")
+	kk := filepath.Join(root, "Demo-Claude", "UserData")
 	gone := filepath.Join(root, "已删图标", "UserData")
 	moved := filepath.Join(root, "挪走了", "UserData")
 	extra := filepath.Join(root, "没登记", "UserData")
@@ -424,13 +424,13 @@ func TestBrowserDiscoveryWithManifest(t *testing.T) {
 	args := func(ud string) string {
 		return `--user-data-dir="` + ud + `" --proxy-server="socks5://127.0.0.1:43866"`
 	}
-	kkLnk := filepath.Join(fk.P.Desktop, "KK-Claude-专用Chrome.lnk")
+	kkLnk := filepath.Join(fk.P.Desktop, "Demo-Claude-专用Chrome.lnk")
 	movedLnk := filepath.Join(fk.P.Home, "图标", "挪走了.lnk")
 	_ = fk.WriteShortcut(platform.Shortcut{Path: kkLnk, Target: `C:\chrome.exe`, Args: args(kk)})
 	_ = fk.WriteShortcut(platform.Shortcut{Path: movedLnk, Target: `C:\chrome.exe`, Args: args(moved)})
 	_ = fk.WriteShortcut(platform.Shortcut{Path: filepath.Join(fk.P.Desktop, "没登记.lnk"), Target: `C:\chrome.exe`, Args: args(extra)})
 	m := &manifest.Manifest{Browsers: []manifest.Browser{
-		{Alias: "KK-Claude", UserDataDir: kk, Shortcut: kkLnk},
+		{Alias: "Demo-Claude", UserDataDir: kk, Shortcut: kkLnk},
 		{Alias: "已删图标", UserDataDir: gone, Shortcut: filepath.Join(fk.P.Desktop, "已删图标.lnk")},
 		{Alias: "挪走了", UserDataDir: moved, Shortcut: movedLnk},
 	}}
@@ -442,7 +442,7 @@ func TestBrowserDiscoveryWithManifest(t *testing.T) {
 	if len(list) != 4 {
 		t.Fatalf("应列出 4 个：%v", got)
 	}
-	if b := got["KK-Claude"]; !b.Registered || len(b.Shortcuts) != 1 || b.MissingShortcut != "" {
+	if b := got["Demo-Claude"]; !b.Registered || len(b.Shortcuts) != 1 || b.MissingShortcut != "" {
 		t.Errorf("桌面上的登记浏览器只算一个快捷方式：%+v", b)
 	}
 	if b := got["已删图标"]; !b.Registered || len(b.Shortcuts) != 0 || b.MissingShortcut == "" {

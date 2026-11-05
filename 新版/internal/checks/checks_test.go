@@ -16,7 +16,7 @@ func ptrB(b bool) *bool     { return &b }
 func ptrI(n int) *int       { return &n }
 func ptrU(n uint32) *uint32 { return &n }
 
-const goodArgs = `--user-data-dir="C:\U\L\ClaudeAccountBrowsers\KK\UserData" --proxy-server="socks5://127.0.0.1:43866" --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost" --lang=en-US --accept-lang="en-US,en" --force-webrtc-ip-handling-policy=disable_non_proxied_udp https://ip.net.coffee/claude/`
+const goodArgs = `--user-data-dir="C:\U\L\ClaudeAccountBrowsers\Demo\UserData" --proxy-server="socks5://127.0.0.1:43866" --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost" --lang=en-US --accept-lang="en-US,en" --force-webrtc-ip-handling-policy=disable_non_proxied_udp https://ip.net.coffee/claude/`
 
 // firewallAllGood 是每个网段的规则都生效的现场。
 func firewallAllGood() facts.FirewallFacts {
@@ -41,8 +41,8 @@ func goodFacts(t *testing.T) *facts.Facts {
 		}
 		return ex
 	}
-	b := facts.Browser{Name: "KK", UserDataDir: `C:\U\L\ClaudeAccountBrowsers\KK\UserData`, Standard: true, DirExists: true,
-		Shortcuts: []facts.ShortcutInfo{{Shortcut: platform.Shortcut{Path: `C:\U\Desktop\KK-Claude-专用Chrome.lnk`, Target: chromeExe, Args: goodArgs}, Flags: chrome.Parse(goodArgs)}}}
+	b := facts.Browser{Name: "Demo", UserDataDir: `C:\U\L\ClaudeAccountBrowsers\Demo\UserData`, Standard: true, DirExists: true,
+		Shortcuts: []facts.ShortcutInfo{{Shortcut: platform.Shortcut{Path: `C:\U\Desktop\Demo-Claude-专用Chrome.lnk`, Target: chromeExe, Args: goodArgs}, Flags: chrome.Parse(goodArgs)}}}
 	f := &facts.Facts{
 		Settings: s, Now: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC), NetworkDone: true,
 		Paths: platform.Paths{LocalAppData: `C:\U\L`, Desktop: `C:\U\Desktop`, Home: `C:\U`},
@@ -295,7 +295,7 @@ func TestCollectorErrorBecomesUnknown(t *testing.T) {
 
 func TestBrowserFlags(t *testing.T) {
 	f := goodFacts(t)
-	bad := `--user-data-dir="C:\U\L\ClaudeAccountBrowsers\KK\UserData" --proxy-server="http://127.0.0.1:7890" --lang=zh-CN`
+	bad := `--user-data-dir="C:\U\L\ClaudeAccountBrowsers\Demo\UserData" --proxy-server="http://127.0.0.1:7890" --lang=zh-CN`
 	f.Browsers[0].Shortcuts[0].Args = bad
 	f.Browsers[0].Shortcuts[0].Flags = chrome.Parse(bad)
 	f.Selected = &f.Browsers[0]
@@ -309,7 +309,7 @@ func TestBrowserFlags(t *testing.T) {
 
 func TestBrowserRunningWithoutFlags(t *testing.T) {
 	f := goodFacts(t)
-	f.Browsers[0].Running = []platform.Process{{PID: 42, Name: "chrome.exe", CmdLine: `chrome.exe --user-data-dir="C:\U\L\ClaudeAccountBrowsers\KK\UserData"`}}
+	f.Browsers[0].Running = []platform.Process{{PID: 42, Name: "chrome.exe", CmdLine: `chrome.exe --user-data-dir="C:\U\L\ClaudeAccountBrowsers\Demo\UserData"`}}
 	f.Selected = &f.Browsers[0]
 	m := byID(Evaluate(f, ResolveTarget(f)))
 	if m["B7"].Status != model.Fail || !strings.Contains(m["B7"].Detail, "42") {
@@ -507,9 +507,9 @@ func TestBrowserManifestHints(t *testing.T) {
 	if m["B1"].Status != model.Pass || strings.Contains(m["B1"].Detail, "部署清单") {
 		t.Errorf("已登记的不应再提示：%+v", m["B1"])
 	}
-	f.Browsers[0].Shortcuts, f.Browsers[0].MissingShortcut = nil, `C:\U\Desktop\KK-Claude-专用Chrome.lnk`
+	f.Browsers[0].Shortcuts, f.Browsers[0].MissingShortcut = nil, `C:\U\Desktop\Demo-Claude-专用Chrome.lnk`
 	m = byID(Evaluate(f, ResolveTarget(f)))
-	if m["B1"].Status != model.Fail || !strings.Contains(m["B1"].Detail, "KK-Claude-专用Chrome.lnk") || m["B1"].FixID != FixBrowserShortcut {
+	if m["B1"].Status != model.Fail || !strings.Contains(m["B1"].Detail, "Demo-Claude-专用Chrome.lnk") || m["B1"].FixID != FixBrowserShortcut {
 		t.Errorf("登记的快捷方式不见了应失败并说出路径：%+v", m["B1"])
 	}
 }

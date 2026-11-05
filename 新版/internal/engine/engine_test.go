@@ -146,12 +146,12 @@ func TestSettingsPortsFromManifestAreReadOnly(t *testing.T) {
 	if src != appconfig.PortFromManifest || note != "" || s.PortCLI != 7897 || s.PortBrowser != 7900 || s.PortDesktop != 7901 {
 		t.Fatalf("应按清单取端口：%q %q %+v", src, note, s)
 	}
-	s.PortDesktop, s.SelectedBrowser = 12345, "KK"
+	s.PortDesktop, s.SelectedBrowser = 12345, "Demo"
 	if err := e.SaveSettings(s); err != nil {
 		t.Fatal(err)
 	}
 	saved, _ := appconfig.Load(fk.P.LocalAppData)
-	if saved.PortCLI != appconfig.DefaultPortCLI || saved.PortDesktop != appconfig.DefaultPortDesktop || saved.SelectedBrowser != "KK" {
+	if saved.PortCLI != appconfig.DefaultPortCLI || saved.PortDesktop != appconfig.DefaultPortDesktop || saved.SelectedBrowser != "Demo" {
 		t.Errorf("设置文件应保留原端口、只存其他设置：%+v", saved)
 	}
 	if got, _ := e.Settings(); got.PortDesktop != 7901 {

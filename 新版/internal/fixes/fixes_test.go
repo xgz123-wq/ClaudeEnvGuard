@@ -48,7 +48,7 @@ func TestApplyAndRestoreRoundTrip(t *testing.T) {
 	home := fk.P.Home
 	settings := filepath.Join(home, ".claude", "settings.json")
 	write(t, settings, origSettings)
-	lnk := filepath.Join(fk.P.Desktop, "KK-Claude-专用Chrome.lnk")
+	lnk := filepath.Join(fk.P.Desktop, "Demo-Claude-专用Chrome.lnk")
 	if err := fk.WriteShortcut(platform.Shortcut{Path: lnk, Target: `C:\chrome.exe`, Args: "--user-data-dir=x"}); err != nil {
 		t.Fatal(err)
 	}
@@ -312,8 +312,8 @@ func planFacts(t *testing.T, fk *platform.Fake) *facts.Facts {
 	chromeExe := filepath.Join(fk.P.ProgramFiles, "Google", "Chrome", "Application", "chrome.exe")
 	write(t, chromeExe, "x")
 	args := `--user-data-dir="X" --proxy-server="http://127.0.0.1:7890" --lang=zh-CN --disable-quic`
-	b := facts.Browser{Name: "KK-Claude", UserDataDir: filepath.Join(fk.P.LocalAppData, "ClaudeAccountBrowsers", "KK-Claude", "UserData"), Standard: true,
-		Shortcuts: []facts.ShortcutInfo{{Shortcut: platform.Shortcut{Path: filepath.Join(fk.P.Desktop, "KK-Claude-专用Chrome.lnk"), Target: `C:\old\chrome.exe`, Args: args}, Flags: chrome.Parse(args)}}}
+	b := facts.Browser{Name: "Demo-Claude", UserDataDir: filepath.Join(fk.P.LocalAppData, "ClaudeAccountBrowsers", "Demo-Claude", "UserData"), Standard: true,
+		Shortcuts: []facts.ShortcutInfo{{Shortcut: platform.Shortcut{Path: filepath.Join(fk.P.Desktop, "Demo-Claude-专用Chrome.lnk"), Target: `C:\old\chrome.exe`, Args: args}, Flags: chrome.Parse(args)}}}
 	f := &facts.Facts{Settings: appconfig.Defaults(), Paths: fk.P, ChromeExe: chromeExe, Browsers: []facts.Browser{b},
 		CLI: facts.CLIFacts{Settings: facts.SettingsFile{Env: map[string]string{"NO_PROXY": "example.com", "ANTHROPIC_BASE_URL": "https://r"}},
 			LocalSettings: facts.SettingsFile{Env: map[string]string{"HTTPS_PROXY": "http://127.0.0.1:7890"}},
