@@ -206,7 +206,9 @@ func (r FirewallRule) OK() bool { return r.Exists && r.Active && r.Block && r.Ou
 type FirewallFacts struct {
 	Read  bool
 	Rules map[string]FirewallRule // 键是 FirewallRange.RuleID；没有这个键等于这条规则不存在
-	Err   string
+	// ProfilesOff 是总开关关着的网络配置文件（域 / 专用 / 公用）。关着的配置文件里规则一条都不生效（2026-11-10 实见）。
+	ProfilesOff []string
+	Err         string
 }
 
 // Broken 按 FirewallRanges 的顺序返回没生效的网段。

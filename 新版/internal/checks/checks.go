@@ -1241,6 +1241,13 @@ func firewallResult(fw facts.FirewallFacts, g model.Group) model.Result {
 		r.Status, r.Detail = model.Unknown, "读取防火墙规则失败："+fw.Err
 		return r
 	}
+	if len(fw.ProfilesOff) > 0 {
+		// 规则再对，总开关关着也一条不生效：这时 Clash 误切全局或挂掉，Claude 会用本机 IP 直连。
+		r.Status, r.Current = model.Fail, "防火墙没开："+strings.Join(fw.ProfilesOff, "、")
+		r.Detail = "Windows 防火墙的总开关关着，阻断规则一条都不生效，程序绕过代理时能直接连上 Anthropic。"
+		r.Advice = "右键开始菜单打开「终端（管理员）」，执行 Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True，再重新体检。"
+		return r
+	}
 	broken := fw.Broken()
 	if len(broken) == 0 {
 		r.Status, r.Current = model.Pass, strconv.Itoa(len(all))+" 条都已生效"

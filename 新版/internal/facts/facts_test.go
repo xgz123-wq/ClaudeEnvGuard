@@ -195,6 +195,16 @@ func TestDesktopPolicyAndFirewall(t *testing.T) {
 	if st := fw.Rules[FirewallRanges[0].RuleID]; !st.OK() || st.Name != "{guid}" {
 		t.Errorf("等价规则应被识别：%+v", fw)
 	}
+	if len(fw.ProfilesOff) != 0 {
+		t.Errorf("没有开关值应按默认开：%v", fw.ProfilesOff)
+	}
+	// 本机关着，但组策略强制开：以组策略为准
+	fk.SetReg(platform.HKLM, keyFirewallPolicy+`\StandardProfile`, valueEnableFirewall, platform.RegValue{Type: "dword", DWord: 0})
+	fk.SetReg(platform.HKLM, keyFirewallPolicy+`\PublicProfile`, valueEnableFirewall, platform.RegValue{Type: "dword", DWord: 0})
+	fk.SetReg(platform.HKLM, keyFirewallGPO+`\PublicProfile`, valueEnableFirewall, platform.RegValue{Type: "dword", DWord: 1})
+	if off := collectFirewall(fk).ProfilesOff; len(off) != 1 || off[0] != "专用" {
+		t.Errorf("应只报专用配置文件关着：%v", off)
+	}
 }
 
 // 规则名和网段照分享包 Anthropic网段直连阻断.ps1；掩码写法由 CIDR 算出来核对，防止抄错。

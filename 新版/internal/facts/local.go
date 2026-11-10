@@ -931,8 +931,34 @@ func parseFirewallRule(v string, g FirewallRange) (active, block, out, rng bool)
 	return
 }
 
+// firewallProfiles 是防火墙三个网络配置文件的注册表子键和显示名；组策略键有值时以它为准。
+var firewallProfiles = []struct{ Key, Name string }{
+	{"DomainProfile", "域"}, {"StandardProfile", "专用"}, {"PublicProfile", "公用"},
+}
+
+const (
+	keyFirewallPolicy   = `SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy`
+	keyFirewallGPO      = `SOFTWARE\Policies\Microsoft\WindowsFirewall`
+	valueEnableFirewall = "EnableFirewall"
+)
+
+// collectFirewallProfiles 返回总开关关着的配置文件；值不存在按 Windows 默认（开）算。
+func collectFirewallProfiles(sys platform.OS) []string {
+	var off []string
+	for _, p := range firewallProfiles {
+		v, err := sys.RegRead(platform.HKLM, keyFirewallGPO+`\`+p.Key, valueEnableFirewall)
+		if err != nil || !v.Exists {
+			v, err = sys.RegRead(platform.HKLM, keyFirewallPolicy+`\`+p.Key, valueEnableFirewall)
+		}
+		if err == nil && v.Exists && v.DWord == 0 {
+			off = append(off, p.Name)
+		}
+	}
+	return off
+}
+
 func collectFirewall(sys platform.OS) FirewallFacts {
-	fw := FirewallFacts{Rules: map[string]FirewallRule{}}
+	fw := FirewallFacts{Rules: map[string]FirewallRule{}, ProfilesOff: collectFirewallProfiles(sys)}
 	var noSameName []FirewallRange
 	for _, g := range FirewallRanges {
 		v, err := sys.RegRead(platform.HKLM, KeyFirewall, g.RuleID)

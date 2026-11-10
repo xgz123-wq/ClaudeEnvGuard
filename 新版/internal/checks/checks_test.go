@@ -230,6 +230,13 @@ func TestS7TwoRanges(t *testing.T) {
 	if r := s7(facts.FirewallFacts{Err: "拒绝访问"}); r.Status != model.Unknown || r.FixID != "" || !strings.Contains(r.Detail, "拒绝访问") {
 		t.Errorf("读不到规则应为未知：%+v", r)
 	}
+
+	// 规则都在但防火墙总开关关着：失败，并点名哪个配置文件（2026-11-10 事故）
+	off := firewallAllGood()
+	off.ProfilesOff = []string{"专用", "公用"}
+	if r := s7(off); r.Status != model.Fail || !strings.Contains(r.Current, "专用、公用") || !strings.Contains(r.Advice, "Set-NetFirewallProfile") {
+		t.Errorf("防火墙关着应失败：%+v", r)
+	}
 }
 
 func TestNoChromeNoFixOffered(t *testing.T) {
