@@ -128,7 +128,7 @@ func aiText(step, reason, extra, dir, script string) string {
 		b.WriteString("记录目录：" + dir + "（记录.json、统一维护\\结果.json、各步 .log）\n")
 	}
 	if script != "" {
-		b.WriteString("更新脚本：" + script + "；维护约定见同目录 更新维护说明.md 和 claude-maintenance Skill\n")
+		b.WriteString("更新脚本：" + script + "；维护约定见同目录 更新维护说明.md\n")
 	}
 	return b.String()
 }

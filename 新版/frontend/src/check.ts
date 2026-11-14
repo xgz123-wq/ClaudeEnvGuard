@@ -18,7 +18,7 @@ const CARDS: { id: Card; name: string }[] = [
   { id: 'system', name: '系统' },
 ];
 
-const PRIORITY = ['P1', 'P2', 'P4', 'B1', 'B2', 'B3', 'B4', 'B5', 'B7', 'D2', 'C2', 'C3', 'P3', 'B6', 'S1', 'S4', 'C4', 'B8', 'C6', 'D4', 'P5', 'C5', 'D3', 'S2', 'S3', 'S7', 'S6', 'S5'];
+const PRIORITY = ['P1', 'P2', 'P4', 'B1', 'B2', 'B3', 'B4', 'B5', 'B7', 'D2', 'C2', 'C3', 'P3', 'B6', 'S1', 'S4', 'C4', 'B8', 'C6', 'D4', 'P5', 'C5', 'D3', 'S2', 'S3', 'S7', 'S5'];
 const rank = (s: Status) => ({ fail: 4, unknown: 3, warn: 2, pass: 1, na: 0 }[s] ?? 0);
 const cleanNames: Record<string, string> = { code: 'Claude Code', desktop: 'Claude Desktop', browser: '这个专用浏览器' };
 

@@ -8,7 +8,7 @@ import (
 
 // 下一步的优先顺序：越靠前越是其他项的前提。
 var priority = []string{"P1", "P2", "P4", "B1", "B2", "B3", "B4", "B5", "B7", "D2", "C2", "C3", "P3", "B6", "S1", "S4",
-	"C4", "B8", "C6", "D4", "P5", "C5", "D3", "S2", "S3", "S7", "S6", "S5"}
+	"C4", "B8", "C6", "D4", "P5", "C5", "D3", "S2", "S3", "S7", "S5"}
 
 // Summarize 汇总结果，给出一句话结论和最该先做的一步。
 func Summarize(results []model.Result) model.Summary {

@@ -1210,21 +1210,7 @@ func (e *ev) system() {
 	}
 	e.add(r)
 
-	// S6 系统代理（信息）
-	r = model.Result{ID: "S6", Group: g, Title: "Windows 系统代理", Kind: model.KindInfo, Advanced: true}
-	if sy.ProxyEnable {
-		r.Current = "开：" + orNone(sy.ProxyServer)
-		r.Status = model.Pass
-		r.Detail = "三个入口各走各的端口，不依赖系统代理。"
-		if f.Proxy.TunMode != nil && *f.Proxy.TunMode {
-			r.Status = model.Warn
-			r.Detail = "TUN 已开时，分享包建议关闭系统代理，避免两套机制混用。"
-			r.Advice = "在 Clash Verge 里关闭「系统代理」。"
-		}
-	} else {
-		r.Status, r.Current, r.Detail = model.Pass, "关", "三个入口各走各的端口，不依赖系统代理。"
-	}
-	e.add(r)
+	// 系统代理不单列：P2 已经从 Clash Verge 配置里查（v2.6.5 起去掉 S6）。
 
 	e.add(firewallResult(f.Firewall, g))
 }
