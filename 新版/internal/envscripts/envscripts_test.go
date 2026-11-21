@@ -83,8 +83,8 @@ const launcherPass = "[PASS] 固定代理：HKLM 策略 -> http://127.0.0.1:4386
 
 func TestLaunchEnglishChecksFirst(t *testing.T) {
 	r, sys := newRunner(t)
-	lnk := filepath.Join(sys.P.Desktop, LauncherShortcut)
-	if err := sys.WriteShortcut(platform.Shortcut{Path: lnk, Target: `C:\Program Files\PowerShell\7\pwsh.exe`, Args: `-NoProfile -File "x\启动Claude英文浏览器.ps1"`}); err != nil {
+	lnk := filepath.Join(sys.P.Desktop, LauncherShortcuts[0])
+	if err := sys.WriteShortcut(platform.Shortcut{Path: lnk, Target: `C:\Program Files\PowerShell\7\pwsh.exe`, Args: `-NoProfile -File "x\Claude桌面启动器.ps1"`}); err != nil {
 		t.Fatal(err)
 	}
 	sys.RunFunc = func(name string, args ...string) (string, int, error) {
@@ -98,7 +98,7 @@ func TestLaunchEnglishChecksFirst(t *testing.T) {
 		t.Fatalf("检查通过应启动：%+v", res)
 	}
 	last := sys.RunLog[len(sys.RunLog)-1]
-	if !strings.HasPrefix(last, `start C:\Program Files\PowerShell\7\pwsh.exe -NoProfile -File "x\启动Claude英文浏览器.ps1"`) {
+	if !strings.HasPrefix(last, `start C:\Program Files\PowerShell\7\pwsh.exe -NoProfile -File "x\Claude桌面启动器.ps1"`) {
 		t.Errorf("应按快捷方式原样启动：%s", last)
 	}
 }
@@ -126,5 +126,57 @@ func TestLaunchEnglishWithoutShortcut(t *testing.T) {
 	last := sys.RunLog[len(sys.RunLog)-1]
 	if !res.Started || !strings.Contains(last, `-NoProfile -File "`+r.Launcher+`"`) {
 		t.Errorf("没有快捷方式时用 pwsh 启动同一个脚本：%+v %s", res, last)
+	}
+}
+
+// 改名后：分享包里只有旧名脚本时回退到旧名；新旧都在时用新名。
+func TestFindLauncherFallsBackToOldName(t *testing.T) {
+	sys := platform.NewFake(t.TempDir())
+	doc := filepath.Join(sys.P.Desktop, "AI应用开发", "docs", "配置", "Claude环境")
+	if err := os.MkdirAll(doc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"README.md", "启动Claude英文浏览器.ps1"} {
+		if err := os.WriteFile(filepath.Join(doc, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r := New(sys, ""); filepath.Base(r.Launcher) != "启动Claude英文浏览器.ps1" {
+		t.Fatalf("只有旧名时应回退：%s", r.Launcher)
+	}
+	if err := os.WriteFile(filepath.Join(doc, "Claude桌面启动器.ps1"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := New(sys, ""); filepath.Base(r.Launcher) != "Claude桌面启动器.ps1" {
+		t.Fatalf("新旧都在时应用新名：%s", r.Launcher)
+	}
+}
+
+// 快捷方式名字对、却指向别的脚本（改名前的旧图标）时不用它，直接跑检查过的脚本。
+func TestLaunchEnglishSkipsStaleShortcut(t *testing.T) {
+	r, sys := newRunner(t)
+	lnk := filepath.Join(sys.P.Desktop, LauncherShortcuts[1])
+	if err := sys.WriteShortcut(platform.Shortcut{Path: lnk, Target: `C:\x\pwsh.exe`, Args: `-NoProfile -File "x\启动Claude英文浏览器.ps1"`}); err != nil {
+		t.Fatal(err)
+	}
+	sys.RunFunc = func(name string, args ...string) (string, int, error) { return launcherPass, 0, nil }
+	res := r.LaunchEnglish(context.Background())
+	last := sys.RunLog[len(sys.RunLog)-1]
+	if !res.Started || !strings.Contains(last, r.Launcher) || strings.Contains(last, `C:\x\pwsh.exe`) {
+		t.Fatalf("旧图标应被跳过，直接跑脚本：%s", last)
+	}
+}
+
+// 只有旧名快捷方式、且它指向当前脚本时照常用它。
+func TestLaunchEnglishOldShortcutName(t *testing.T) {
+	r, sys := newRunner(t)
+	lnk := filepath.Join(sys.P.Desktop, LauncherShortcuts[1])
+	if err := sys.WriteShortcut(platform.Shortcut{Path: lnk, Target: `C:\y\pwsh.exe`, Args: `-NoProfile -File "` + r.Launcher + `"`}); err != nil {
+		t.Fatal(err)
+	}
+	sys.RunFunc = func(name string, args ...string) (string, int, error) { return launcherPass, 0, nil }
+	r.LaunchEnglish(context.Background())
+	if last := sys.RunLog[len(sys.RunLog)-1]; !strings.HasPrefix(last, `start C:\y\pwsh.exe`) {
+		t.Fatalf("应按旧名快捷方式启动：%s", last)
 	}
 }

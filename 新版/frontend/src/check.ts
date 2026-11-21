@@ -357,7 +357,7 @@ function toolsHTML(): string {
     case 'desktop': {
       const busy = !!st.launch?.busy;
       return tool('Desktop 的代理来自 HKLM 策略，改完要完全退出（含托盘）再打开',
-        `<button class="btn small" data-act="launch-en" ${busy ? 'disabled' : ''} title="先跑英文启动器的启动前检查，全部通过才启动；和桌面「Claude-英文浏览器」同一个脚本">${busy ? '正在检查…' : '检查后启动 Desktop（英文）'}</button>${cleanBtn('desktop')}`) + launchHTML();
+        `<button class="btn small" data-act="launch-en" ${busy ? 'disabled' : ''} title="先跑英文启动器的启动前检查，全部通过才启动；和桌面「Claude-桌面启动器」同一个脚本">${busy ? '正在检查…' : '检查后启动 Desktop（英文）'}</button>${cleanBtn('desktop')}`) + launchHTML();
     }
     case 'system':
       return tool('时区和区域格式「随 IP」：换了出口地区，这里的目标会跟着变；Clash 规则、脚本哈希、直连防护的管理员证据要跑深度总检',
@@ -677,7 +677,7 @@ async function openDeep(rerun = false) {
   render();
 }
 
-// launchEnglish 和桌面「Claude-英文浏览器」同一个脚本：先 -CheckOnly，全部通过才按快捷方式启动；
+// launchEnglish 和桌面「Claude-桌面启动器」同一个脚本：先 -CheckOnly，全部通过才按快捷方式启动；
 // 那个黑色窗口守着 Claude，关掉它 = 退出 Claude。
 async function launchEnglish() {
   st.launch = { busy: true, res: null };

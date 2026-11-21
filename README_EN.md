@@ -78,7 +78,7 @@ The exe handles checks, fixes, restores and clean-ups on its own. The three feat
 |---|---|
 | The whole Update page (version check + update) | `docs\配置\Claude环境\Desktop防护\更新三端Claude.ps1` |
 | Deep check | `docs\配置\Claude环境\Claude环境一键总检.ps1` |
-| Pre-checked Desktop launch in English | `docs\配置\Claude环境\启动Claude英文浏览器.ps1` |
+| Pre-checked Desktop launch in English | `docs\配置\Claude环境\Claude桌面启动器.ps1` (the old name `启动Claude英文浏览器.ps1` still works) |
 
 - **Deployment manifest**: every run of the share pack's full check writes the three ports (read from Clash), its own location and the registered dedicated browsers to `%LOCALAPPDATA%\ClaudeNetworkGuard\部署清单.json`; the guard only reads it and still verifies every item. Ports come from the manifest and are read-only in Settings: change them in Clash, then run the full check once. Without the share pack you can hand-write this file following the share pack's `部署清单.示例.json`.
 - **Where it looks**: nothing to fill in. The script root in the deployment manifest (a folder typed into Settings by an older version wins and can be cleared there), then `Desktop\AI应用开发`, `Desktop\Claude环境分享版`, then first-level folders on the Desktop and in Documents; the first match wins, and Settings shows which copy is in use. The direct-connection guard status (D3) uses the same lookup.

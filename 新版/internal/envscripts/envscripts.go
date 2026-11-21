@@ -1,7 +1,7 @@
 // Package envscripts 把桌面上另外两个图标并进卫士（需求文档阶段 5）：
 //
 //	深度总检 —— 调 Claude环境一键总检.ps1 -ResultPath，读它写的 JSON，列出 PASS / WARN / FAIL / MANUAL；
-//	检查后启动 Desktop（英文） —— 先在后台跑 启动Claude英文浏览器.ps1 -CheckOnly，全部通过才按桌面快捷方式原样启动它。
+//	检查后启动 Desktop（英文） —— 先在后台跑 Claude桌面启动器.ps1 -CheckOnly，全部通过才按桌面快捷方式原样启动它。
 //
 // 和更新页一样只调用脚本、读脚本写的结果，不重写脚本里的判定。脚本找法与更新页共用 internal/scriptroot。
 package envscripts
@@ -22,12 +22,32 @@ import (
 
 // 脚本在项目目录里的相对位置。
 var (
-	deepRel     = filepath.Join("docs", "配置", "Claude环境", "Claude环境一键总检.ps1")
-	launcherRel = filepath.Join("docs", "配置", "Claude环境", "启动Claude英文浏览器.ps1")
+	deepRel = filepath.Join("docs", "配置", "Claude环境", "Claude环境一键总检.ps1")
+	// 启动器 2026-11-21 由「启动Claude英文浏览器.ps1」改名为「Claude桌面启动器.ps1」（它不是浏览器）。
+	// 新名在前；旧名留作回退，还在用旧分享包的人照样能用。
+	launcherRels = []string{
+		filepath.Join("docs", "配置", "Claude环境", "Claude桌面启动器.ps1"),
+		filepath.Join("docs", "配置", "Claude环境", "启动Claude英文浏览器.ps1"),
+	}
 )
 
-// LauncherShortcut 是桌面上英文启动器的快捷方式名。卫士按它原样启动，关窗即退出 Claude 的行为不变。
-const LauncherShortcut = "Claude-英文浏览器.lnk"
+// LauncherShortcuts 是桌面上启动器的快捷方式名，新名在前、旧名回退。卫士按它原样启动，关窗即退出 Claude 的行为不变。
+var LauncherShortcuts = []string{"Claude-桌面启动器.lnk", "Claude-英文浏览器.lnk"}
+
+// findLauncher 按 launcherRels 顺序返回第一个存在的启动器；都不存在时返回新名的位置，报错时显示它。
+func findLauncher(p platform.Paths, shareRoot string) string {
+	first := ""
+	for _, rel := range launcherRels {
+		f := scriptroot.Find(p, shareRoot, rel)
+		if first == "" {
+			first = f
+		}
+		if _, err := os.Stat(f); err == nil {
+			return f
+		}
+	}
+	return first
+}
 
 // Runner 找脚本、跑脚本。
 type Runner struct {
@@ -47,7 +67,7 @@ func New(sys platform.OS, shareRoot string) *Runner {
 	if _, err := os.Stat(pwsh); err != nil {
 		pwsh = "pwsh.exe"
 	}
-	return &Runner{Sys: sys, Pwsh: pwsh, Deep: scriptroot.Find(p, shareRoot, deepRel), Launcher: scriptroot.Find(p, shareRoot, launcherRel),
+	return &Runner{Sys: sys, Pwsh: pwsh, Deep: scriptroot.Find(p, shareRoot, deepRel), Launcher: findLauncher(p, shareRoot),
 		OutDir: filepath.Join(p.LocalAppData, "ClaudeEnvGuard", "深度总检"), DeepLimit: 3 * time.Minute, Now: time.Now}
 }
 
@@ -200,11 +220,19 @@ func (r *Runner) LaunchEnglish(ctx context.Context) LaunchResult {
 	if !res.OK {
 		return res
 	}
-	lnk := filepath.Join(r.Sys.Paths().Desktop, LauncherShortcut)
+	// 只用指向刚检查过的那份脚本的快捷方式；名字对、却指向别的脚本（改名前的旧图标）就不用它，直接跑脚本。
 	var err error
-	if sc, rerr := r.Sys.ReadShortcut(lnk); rerr == nil && sc.Target != "" {
-		err = r.Sys.StartDetached(sc.Target, sc.Args)
-	} else {
+	started := false
+	base := strings.ToLower(filepath.Base(r.Launcher))
+	for _, name := range LauncherShortcuts {
+		sc, rerr := r.Sys.ReadShortcut(filepath.Join(r.Sys.Paths().Desktop, name))
+		if rerr == nil && sc.Target != "" && strings.Contains(strings.ToLower(sc.Args), base) {
+			err = r.Sys.StartDetached(sc.Target, sc.Args)
+			started = true
+			break
+		}
+	}
+	if !started {
 		err = r.Sys.StartDetached(r.Pwsh, `-NoProfile -File "`+r.Launcher+`"`)
 	}
 	if err != nil {
