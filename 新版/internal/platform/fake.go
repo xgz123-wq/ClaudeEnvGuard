@@ -26,6 +26,8 @@ type Fake struct {
 	RunLog      []string
 	RunFunc     func(name string, args ...string) (string, int, error)
 	ElevateFunc func(exe string, args []string) (int, error)
+	WFP         map[string]WFPFilter // GUID → 过滤；没登记的视为不存在
+	WFPErr      error
 }
 
 // NewFake 在 root 下建好常用目录。
@@ -180,4 +182,16 @@ func (f *Fake) FileSignature(path string) (Signature, error) {
 		return s, nil
 	}
 	return Signature{Status: "未签名"}, nil
+}
+
+// WFPFilters 按 WFP 表返回；WFPErr 非空时模拟引擎打不开。
+func (f *Fake) WFPFilters(keys []string) (map[string]WFPFilter, error) {
+	if f.WFPErr != nil {
+		return nil, f.WFPErr
+	}
+	out := map[string]WFPFilter{}
+	for _, k := range keys {
+		out[k] = f.WFP[k]
+	}
+	return out, nil
 }

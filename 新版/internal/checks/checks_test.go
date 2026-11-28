@@ -57,10 +57,11 @@ func goodFacts(t *testing.T) *facts.Facts {
 			UserEnv: map[string]string{}, MachineEnv: map[string]string{}},
 		Desktop: facts.DesktopFacts{Installed: true, FullName: "Claude_2.31226.1.0_x64__pzs8sxrjxfjjc", Version: "2.31226.1.0",
 			HKLM: facts.PolicyLayer{Name: "HKLM", HasEgress: true, Egress: "http://127.0.0.1:43867", DisableAU: ptrU(1)}},
-		System:    facts.SystemFacts{WindowsTZ: "Eastern Standard Time", AutoTZ: ptrB(false), Locale: "en-US", GeoName: "US", UILang: "en-US"},
-		Firewall:  firewallAllGood(),
-		IPv6:      facts.IPv6Facts{Tested: true, DirectErr: "超时"},
-		SystemDNS: &model.DNSLeak{Tested: true, Resolvers: []model.Resolver{{IP: "1.1.1.1", CountryCode: "US"}}},
+		System:     facts.SystemFacts{WindowsTZ: "Eastern Standard Time", AutoTZ: ptrB(false), Locale: "en-US", GeoName: "US", UILang: "en-US"},
+		Firewall:   firewallAllGood(),
+		KillSwitch: facts.KillSwitchFacts{Read: true, Installed: len(facts.KillSwitchKeys), Denied: len(facts.KillSwitchKeys)},
+		IPv6:       facts.IPv6Facts{Tested: true, DirectErr: "超时"},
+		SystemDNS:  &model.DNSLeak{Tested: true, Resolvers: []model.Resolver{{IP: "1.1.1.1", CountryCode: "US"}}},
 		Exits: map[model.Entry]*model.Exit{
 			model.EntryBrowser: exit(model.EntryBrowser, 43866, true), model.EntryCLI: exit(model.EntryCLI, 43865, false), model.EntryDesktop: exit(model.EntryDesktop, 43867, true)},
 		Errors: map[string]string{},
@@ -518,5 +519,39 @@ func TestBrowserManifestHints(t *testing.T) {
 	m = byID(Evaluate(f, ResolveTarget(f)))
 	if m["B1"].Status != model.Fail || !strings.Contains(m["B1"].Detail, "Demo-Claude-专用Chrome.lnk") || m["B1"].FixID != FixBrowserShortcut {
 		t.Errorf("登记的快捷方式不见了应失败并说出路径：%+v", m["B1"])
+	}
+}
+
+// TestS8KillSwitch：9 条都在通过；没装、只剩几条判失败并计入结论；读不到为未知；收集器出错也是未知。
+func TestS8KillSwitch(t *testing.T) {
+	total := len(facts.KillSwitchKeys)
+	s8 := func(ks facts.KillSwitchFacts) model.Result {
+		f := goodFacts(t)
+		f.KillSwitch = ks
+		return byID(Evaluate(f, ResolveTarget(f)))["S8"]
+	}
+	if r := s8(facts.KillSwitchFacts{Read: true, Installed: total}); r.Status != model.Pass || r.Advanced || r.Group != model.GroupSystem {
+		t.Errorf("9 条都在应通过、计入结论、在系统卡片：%+v", r)
+	}
+	r := s8(facts.KillSwitchFacts{Read: true})
+	if r.Status != model.Fail || r.Advanced || r.Current != "没装" || !strings.Contains(r.Advice, "全局断网开关-安装") {
+		t.Errorf("没装应失败并提示重装：%+v", r)
+	}
+	if r := s8(facts.KillSwitchFacts{Read: true, Installed: 4}); r.Status != model.Fail || !strings.Contains(r.Current, "4/9") {
+		t.Errorf("只剩 4 条应失败并写明条数：%+v", r)
+	}
+	if r := s8(facts.KillSwitchFacts{Err: "打开 WFP 引擎失败"}); r.Status != model.Unknown || !strings.Contains(r.Detail, "WFP") {
+		t.Errorf("读不到应为未知：%+v", r)
+	}
+	f := goodFacts(t)
+	f.Errors["killswitch"] = "超时"
+	if r := byID(Evaluate(f, ResolveTarget(f)))["S8"]; r.Status != model.Unknown {
+		t.Errorf("收集器出错应为未知，绝不显示通过：%+v", r)
+	}
+	// 没装要压过其他通过项，进结论里的「下一步」。
+	f = goodFacts(t)
+	f.KillSwitch = facts.KillSwitchFacts{Read: true}
+	if s := Summarize(Evaluate(f, ResolveTarget(f))); s.Fail == 0 {
+		t.Errorf("断网开关没装应计入失败：%+v", s)
 	}
 }

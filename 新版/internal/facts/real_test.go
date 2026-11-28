@@ -143,3 +143,23 @@ func TestRealNetworkTiming(t *testing.T) {
 	CollectNetwork(context.Background(), sys, f, n, 14*time.Second)
 	t.Logf("总计 %s", at())
 }
+
+// TestRealKillSwitch 在真机上读全局断网开关的 9 条过滤，再读一个编出来的 GUID，确认「不存在」能读出来（不会把读不到当成在）。只读。
+// 运行：CEG_REAL=1 go test ./internal/facts -run TestRealKillSwitch -v
+func TestRealKillSwitch(t *testing.T) {
+	if os.Getenv("CEG_REAL") == "" {
+		t.Skip("设置 CEG_REAL=1 才在真机上运行")
+	}
+	sys := platform.NewWindows()
+	st := time.Now()
+	ks := collectKillSwitch(sys)
+	t.Logf("用时 %v；读到=%v 装了 %d/%d（看不到内容 %d）错误=%q", time.Since(st), ks.Read, ks.Installed, len(KillSwitchKeys), ks.Denied, ks.Err)
+	const bogus = "00000000-1111-2222-3333-444455556666"
+	got, err := sys.WFPFilters([]string{bogus})
+	if err != nil {
+		t.Fatalf("读编出来的 GUID 出错：%v", err)
+	}
+	if got[bogus].Exists {
+		t.Fatalf("编出来的 GUID 被当成存在：%+v", got[bogus])
+	}
+}

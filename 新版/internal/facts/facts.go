@@ -34,6 +34,7 @@ type Facts struct {
 	System     SystemFacts
 	Guard      GuardFacts
 	Firewall   FirewallFacts
+	KillSwitch KillSwitchFacts
 
 	// 联网阶段
 	NetworkDone bool
@@ -237,4 +238,12 @@ func (f *Facts) SelectedName() string {
 		return ""
 	}
 	return f.Selected.Name
+}
+
+// KillSwitchFacts 是全局断网开关（WFP 常驻过滤）的现状。
+type KillSwitchFacts struct {
+	Read      bool
+	Installed int // 9 条固定过滤里在、且是常驻的条数
+	Denied    int // 其中普通权限看不到内容的条数（常驻过滤正常就是这样）
+	Err       string
 }

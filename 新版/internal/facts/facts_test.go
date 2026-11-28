@@ -465,3 +465,25 @@ func TestBrowserDiscoveryWithManifest(t *testing.T) {
 		t.Errorf("桌面上没登记的照常列出：%+v", b)
 	}
 }
+
+// TestCollectKillSwitch：只数「在且常驻」的；动态（非常驻）的不算；WFP 打不开时读不到。
+func TestCollectKillSwitch(t *testing.T) {
+	fk := platform.NewFake(t.TempDir())
+	fk.WFP = map[string]platform.WFPFilter{}
+	for i, k := range KillSwitchKeys {
+		switch {
+		case i < 6:
+			fk.WFP[k] = platform.WFPFilter{Exists: true, Persistent: true, Denied: true}
+		case i == 6:
+			fk.WFP[k] = platform.WFPFilter{Exists: true} // 试装时的动态过滤，不算
+		}
+	}
+	ks := collectKillSwitch(fk)
+	if !ks.Read || ks.Installed != 6 || ks.Denied != 6 {
+		t.Errorf("应读到 6 条常驻：%+v", ks)
+	}
+	fk.WFPErr = errors.New("打开 WFP 引擎失败（0x00000005）")
+	if ks := collectKillSwitch(fk); ks.Read || !strings.Contains(ks.Err, "WFP") {
+		t.Errorf("引擎打不开应读不到并带原因：%+v", ks)
+	}
+}

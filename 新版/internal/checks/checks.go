@@ -74,7 +74,7 @@ func Evaluate(f *facts.Facts, t model.Target) []model.Result {
 func (e *ev) markCollectorError(name, msg string) {
 	group := map[string]model.Group{"proxy": model.GroupOverview, "browsers": model.GroupBrowser, "cli": model.GroupCLI,
 		"desktop": model.GroupDesktop, "system": model.GroupSystem}[name]
-	ids := map[string][]string{"guard": {"D3"}, "firewall": {"S7"}, "processes": {"B7"}}[name]
+	ids := map[string][]string{"guard": {"D3"}, "firewall": {"S7"}, "killswitch": {"S8"}, "processes": {"B7"}}[name]
 	for i := range e.out {
 		r := &e.out[i]
 		hit := (group != "" && r.Group == group && (name != "proxy" || r.ID == "P1" || r.ID == "P2"))
@@ -1213,6 +1213,7 @@ func (e *ev) system() {
 	// 系统代理不单列：P2 已经从 Clash Verge 配置里查（v2.6.5 起去掉 S6）。
 
 	e.add(firewallResult(f.Firewall, g))
+	e.add(killSwitchResult(f.KillSwitch, g))
 }
 
 // firewallResult 判定 S7：每个网段一条规则，都生效才通过；没生效的写明是哪个网段。
@@ -1257,5 +1258,29 @@ func firewallResult(fw facts.FirewallFacts, g model.Group) model.Result {
 	}
 	r.Status, r.Current, r.Detail, r.FixID = model.Warn, strings.Join(cur, "；"), strings.Join(why, ""), FixFirewall
 	r.Advice = "可选：多一道保险。点「一键修复」补上有问题的（需要管理员，每条都能单独还原），已生效的不动。"
+	return r
+}
+
+// killSwitchResult 判定 S8：全局断网开关 9 条常驻过滤都在才通过，计入结论（部署规格要求装；解除后忘了重装就在这里提醒）。
+func killSwitchResult(ks facts.KillSwitchFacts, g model.Group) model.Result {
+	total := len(facts.KillSwitchKeys)
+	r := model.Result{ID: "S8", Group: g, Title: "全局断网开关", Kind: model.KindFixed,
+		Target: fmt.Sprintf("%d 条常驻过滤都在：Clash 或 TUN 不在时整台电脑上不了外网", total)}
+	switch {
+	case !ks.Read:
+		r.Status, r.Detail = model.Unknown, "读取断网开关失败："+ks.Err
+		r.Advice = "重新检查一次；仍然读不到就点「深度总检」，它用分享包脚本再查一遍。"
+	case ks.Installed == total:
+		r.Status, r.Current = model.Pass, fmt.Sprintf("%d 条都在", total)
+		r.Detail = "Clash 或 TUN 掉了时整台电脑上不了外网，其他程序不会用本机 IP 直连。"
+	case ks.Installed == 0:
+		r.Status, r.Current = model.Fail, "没装"
+		r.Detail = "没装，或被「全局断网开关-解除（断网急救）」解除后没装回去：Clash 或 TUN 不在时，其他程序会用本机 IP 直连。"
+		r.Advice = "双击桌面「全局断网开关-安装」图标重装（会弹一次 UAC），装好后重新体检。"
+	default:
+		r.Status, r.Current = model.Fail, fmt.Sprintf("只剩 %d/%d 条", ks.Installed, total)
+		r.Detail = "开关不完整，拦不全：Clash 或 TUN 不在时，部分流量会用本机 IP 直连。"
+		r.Advice = "双击桌面「全局断网开关-安装」图标重装（会弹一次 UAC），装好后重新体检。"
+	}
 	return r
 }

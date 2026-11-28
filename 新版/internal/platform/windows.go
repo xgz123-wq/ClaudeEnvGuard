@@ -644,3 +644,55 @@ func certName(cert *windows.CertContext, nameType uint32, para unsafe.Pointer) s
 	windows.CertGetNameString(cert, nameType, 0, para, &buf[0], n)
 	return windows.UTF16ToString(buf)
 }
+
+// ---------------------------------------------------------------- WFP（全局断网开关）
+
+var (
+	modfwpuclnt             = windows.NewLazySystemDLL("fwpuclnt.dll")
+	procFwpmEngineOpen0     = modfwpuclnt.NewProc("FwpmEngineOpen0")
+	procFwpmEngineClose0    = modfwpuclnt.NewProc("FwpmEngineClose0")
+	procFwpmFilterGetByKey0 = modfwpuclnt.NewProc("FwpmFilterGetByKey0")
+	procFwpmFreeMemory0     = modfwpuclnt.NewProc("FwpmFreeMemory0")
+)
+
+const (
+	rpcCAuthnWinNT       = 10         // RPC_C_AUTHN_WINNT，同分享包 全局断网过滤.cs
+	fwpEFilterNotFound   = 0x80320003 // FWP_E_FILTER_NOT_FOUND
+	fwpmFilterPersistent = 1          // FWPM_FILTER_FLAG_PERSISTENT
+	fwpmFilterFlagsAt    = 32         // FWPM_FILTER0.flags 的偏移：filterKey(16) + displayData(16)，x64
+)
+
+// WFPFilters 打开 WFP 引擎（非动态会话、不提权），逐个按 GUID 读过滤。
+// 返回码：0 读到（取 flags 看是否常驻）；FWP_E_FILTER_NOT_FOUND 不存在；ERROR_ACCESS_DENIED 存在但看不到内容。
+func (w *Windows) WFPFilters(keys []string) (map[string]WFPFilter, error) {
+	if err := procFwpmEngineOpen0.Find(); err != nil {
+		return nil, err
+	}
+	var engine windows.Handle
+	if r, _, _ := procFwpmEngineOpen0.Call(0, rpcCAuthnWinNT, 0, 0, uintptr(unsafe.Pointer(&engine))); uint32(r) != 0 {
+		return nil, fmt.Errorf("打开 WFP 引擎失败（0x%08X）", uint32(r))
+	}
+	defer procFwpmEngineClose0.Call(uintptr(engine))
+	out := make(map[string]WFPFilter, len(keys))
+	for _, k := range keys {
+		g, err := windows.GUIDFromString("{" + k + "}")
+		if err != nil {
+			return nil, fmt.Errorf("GUID 写法不对：%s", k)
+		}
+		var p *byte
+		r, _, _ := procFwpmFilterGetByKey0.Call(uintptr(engine), uintptr(unsafe.Pointer(&g)), uintptr(unsafe.Pointer(&p)))
+		switch code := uint32(r); code {
+		case 0:
+			flags := *(*uint32)(unsafe.Add(unsafe.Pointer(p), fwpmFilterFlagsAt))
+			procFwpmFreeMemory0.Call(uintptr(unsafe.Pointer(&p)))
+			out[k] = WFPFilter{Exists: true, Persistent: flags&fwpmFilterPersistent != 0}
+		case fwpEFilterNotFound:
+			out[k] = WFPFilter{}
+		case uint32(windows.ERROR_ACCESS_DENIED):
+			out[k] = WFPFilter{Exists: true, Persistent: true, Denied: true}
+		default:
+			return nil, fmt.Errorf("读过滤 %s 失败（0x%08X）", k, code)
+		}
+	}
+	return out, nil
+}

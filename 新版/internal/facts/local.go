@@ -125,6 +125,10 @@ func CollectLocal(ctx context.Context, sys platform.OS, s appconfig.Settings) *F
 			v := collectFirewall(sys)
 			return func() { f.Firewall = v }
 		}),
+		run("killswitch", 1500*time.Millisecond, func() func() {
+			v := collectKillSwitch(sys)
+			return func() { f.KillSwitch = v }
+		}),
 	)
 	return f
 }
@@ -1002,3 +1006,35 @@ func collectFirewall(sys platform.OS) FirewallFacts {
 
 // Exists 判断路径是否存在（供判定逻辑使用）。
 func Exists(p string) bool { return exists(p) }
+
+// KillSwitchKeys 是全局断网开关 9 条常驻过滤的固定 GUID，和分享包 Desktop防护\全局断网过滤.cs 的 AllKeys 一致；
+// 那边改了 GUID 这里要跟着改（漂移只会误报「没装」，不会误报通过）。
+var KillSwitchKeys = []string{
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e31", // V4Core
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e32", // V4Loopback
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e33", // V4Tun
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e34", // V4Lan
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e35", // V4Block
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e41", // V6Core
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e42", // V6Loopback
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e44", // V6Lan
+	"6a1e3c52-9b47-4d2f-8e1a-0c5d7f3b9e45", // V6Block
+}
+
+// collectKillSwitch 读 9 条过滤，数在且常驻的（同分享包 全局断网开关.ps1 -Action Status）。
+func collectKillSwitch(sys platform.OS) KillSwitchFacts {
+	m, err := sys.WFPFilters(KillSwitchKeys)
+	if err != nil {
+		return KillSwitchFacts{Err: err.Error()}
+	}
+	ks := KillSwitchFacts{Read: true}
+	for _, k := range KillSwitchKeys {
+		if v := m[k]; v.Exists && v.Persistent {
+			ks.Installed++
+			if v.Denied {
+				ks.Denied++
+			}
+		}
+	}
+	return ks
+}

@@ -108,6 +108,14 @@ var ErrAccessDenied = errors.New("权限不足（需要管理员）")
 // ErrElevationCancelled 表示用户在 UAC 弹窗里点了「否」。
 var ErrElevationCancelled = errors.New("没有授予管理员权限（UAC 已取消）")
 
+// WFPFilter 是一条 WFP 过滤的现状（只读）。
+type WFPFilter struct {
+	Exists     bool `json:"exists"`
+	Persistent bool `json:"persistent"`
+	// Denied：过滤在，但普通权限读不到内容。常驻过滤装上后普通用户读就是这样，按「在、常驻」算（同分享包 全局断网过滤.cs）。
+	Denied bool `json:"denied,omitempty"`
+}
+
 // OS 是检查和修复用到的全部系统能力。
 type OS interface {
 	Paths() Paths
@@ -141,4 +149,6 @@ type OS interface {
 	GlobalIPv6() []string
 	// FileSignature 校验文件的 Authenticode 签名（不联网查吊销）。
 	FileSignature(path string) (Signature, error)
+	// WFPFilters 按固定 GUID（不带花括号）读 WFP 过滤，不提权；WFP 引擎打不开或读出没见过的错返回 err。
+	WFPFilters(keys []string) (map[string]WFPFilter, error)
 }
